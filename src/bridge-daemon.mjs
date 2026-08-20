@@ -41,7 +41,7 @@ function executePayload(task) {
     case 'echo':
       return { echoed: p.text ?? p.command ?? null };
     case 'notify':
-      // ack/notification envelope (e.g. Vivian confirming something) — record and acknowledge
+      // ack/notification envelope (e.g. the peer confirming something) — record and acknowledge
       return {
         ack: true,
         from: task.requester || 'unknown',

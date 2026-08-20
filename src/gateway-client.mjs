@@ -2,7 +2,7 @@
 // gateway-client.mjs — ODSH Bridge shared gateway client module (used by all three CLIs)
 //
 // Origin: extracted verbatim from the handshake/connection logic of the `oc_client.mjs` that was
-// verified in the real environment (2026-08, docker agent-mesh, DeepSeek Harness ↔ OpenClaw/Vivian);
+// verified in the real environment (2026-08, docker agent-mesh, DeepSeek Harness ↔ OpenClaw);
 // behavior is preserved as-is:
 //   1. Minimal WebSocket-over-net client (zero npm dependencies)
 //   2. Ed25519 device identity persistence (JWK stored in bridge DSH-Workspace, generated once, reused later)

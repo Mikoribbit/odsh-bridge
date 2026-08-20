@@ -4,7 +4,7 @@
 // Usage:
 //   node oc-send.mjs "<text>" [--channel <channelId>] [--action send|read] [--raw]
 // Ran and passed in the verify environment:
-//   node oc-send.mjs "hello Vivian" --channel <channelId>     # DELIVERED
+//   node oc-send.mjs "hello" --channel <channelId>     # DELIVERED
 // Send implementation: tools.invoke { name:'message', args:{ action:'send', channel:'discord',
 //           to:'channel:<channelId>', text } } — delivery is confirmed when payload.ok === true (seen in the large output).
 //

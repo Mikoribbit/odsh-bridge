@@ -1,5 +1,10 @@
 # ODSH Bridge — OpenClaw × DeepSeek Harness connectivity bridge
 
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Node](https://img.shields.io/badge/Node-%3E%3D18-green.svg)
+![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
+![Platform](https://img.shields.io/badge/platform-Docker%2Fagent--mesh-blue.svg)
+
 > **One-line positioning**: lets DeepSeek Harness (DSH, the execution layer) reach the OpenClaw/Vivian (brain/persona layer)
 > gateway over WebSocket, and hand off tasks reliably between the two containers through a shared directory bridge
 > (envelope + daemon).

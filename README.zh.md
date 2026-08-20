@@ -1,5 +1,10 @@
 # ODSH Bridge — OpenClaw × DeepSeek Harness 互联桥
 
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Node](https://img.shields.io/badge/Node-%3E%3D18-green.svg)
+![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
+![Platform](https://img.shields.io/badge/platform-Docker%2Fagent--mesh-blue.svg)
+
 > 本文为英文 README.md 的中文对照版。
 
 > **一句话定位**：让 DeepSeek Harness（DSH，执行层）通过 WebSocket 接入 OpenClaw/Vivian（大脑/人格层）的网关，

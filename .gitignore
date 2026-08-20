@@ -14,5 +14,7 @@ Openclaw-Workspace/
 # 编辑器/系统
 .DS_Store
 *.log
+*.tmp
 .idea/
 .vscode/
+.artifacts/

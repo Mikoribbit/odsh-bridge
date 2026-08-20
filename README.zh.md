@@ -1,9 +1,16 @@
 # ODSH Bridge — OpenClaw × DeepSeek Harness 互联桥
 
+<div align="center">
+
+[**English**](https://github.com/Mikoribbit/odsh-bridge/blob/main/README.md) ·
+[**中文**](https://github.com/Mikoribbit/odsh-bridge/blob/main/README.zh.md)
+
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Node](https://img.shields.io/badge/Node-%3E%3D18-green.svg)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
 ![Platform](https://img.shields.io/badge/platform-Docker%2Fagent--mesh-blue.svg)
+
+</div>
 
 > 本文为英文 README.md 的中文对照版。
 
@@ -12,6 +19,22 @@
 >
 > 所有能力均来自 2026-08 在 docker `agent-mesh` 网络上的真实集成并跑通验证；未验证/推测项一律标注 `⚠️ 需自行验证`。
 > 认证信息全部为占位符——任何真实 token/密钥都不应出现在此仓库。
+
+---
+
+## 目录
+
+- [1. 架构（文字版）](#1-架构文字版)
+- [2. 已验证特性](#2-已验证特性)
+- [3. 快速开始](#3-快速开始)
+- [4. 配置（.env 字段）](#4-配置env-字段)
+- [5. 目录结构](#5-目录结构)
+- [6. 两种集成方式](#6-两种集成方式)
+- [7. 安全注意事项](#7-安全注意事项)
+- [8. 常见故障排查](#8-常见故障排查)
+- [9. Roadmap（未实现/未验证 → 全部标注 ⚠️）](#9-roadmap未实现--未验证--全部标注-️)
+- [10. 相关链接](#10-相关链接)
+- [维护笔记](MAINTENANCE.md)
 
 ---
 

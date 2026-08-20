@@ -1,9 +1,16 @@
 # ODSH Bridge — OpenClaw × DeepSeek Harness connectivity bridge
 
+<div align="center">
+
+[**English**](https://github.com/Mikoribbit/odsh-bridge/blob/main/README.md) ·
+[**中文**](https://github.com/Mikoribbit/odsh-bridge/blob/main/README.zh.md)
+
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Node](https://img.shields.io/badge/Node-%3E%3D18-green.svg)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
 ![Platform](https://img.shields.io/badge/platform-Docker%2Fagent--mesh-blue.svg)
+
+</div>
 
 > **One-line positioning**: lets DeepSeek Harness (DSH, the execution layer) reach the OpenClaw/Vivian (brain/persona layer)
 > gateway over WebSocket, and hand off tasks reliably between the two containers through a shared directory bridge
@@ -12,6 +19,22 @@
 > Everything here comes from a real integration that was run and verified in 2026-08 on the docker `agent-mesh`
 > network; anything not verified or speculative is marked `⚠️ verify yourself`.
 > All credentials are placeholders — no real token/secret should ever appear in this repository.
+
+---
+
+## Table of contents
+
+- [1. Architecture](#1-architecture-text-version)
+- [2. Verified features](#2-verified-features)
+- [3. Quick start](#3-quick-start)
+- [4. Configuration (.env fields)](#4-configuration-env-fields)
+- [5. Directory structure](#5-directory-structure)
+- [6. Two integration approaches](#6-two-integration-approaches)
+- [7. Security notes](#7-security-notes)
+- [8. Troubleshooting (common failures)](#8-troubleshooting-common-failures)
+- [9. Roadmap](#9-roadmap-not-implemented--not-verified--all-marked-️)
+- [10. Related links](#10-related-links)
+- [Maintenance notes](MAINTENANCE.md)
 
 ---
 

@@ -1,19 +1,74 @@
 ---
 name: odsh-interop
-description: ODSH Bridge cross-container collaboration protocol — how the OpenClaw agent works with a DeepSeek Harness (DSH) execution layer: task envelopes, bridge zones, notification channel rules
-version: 1
+description: ODSH Bridge cross-container collaboration protocol — how the OpenClaw agent routes tasks between itself and a DeepSeek Harness (DSH) execution layer by task weight and predicted token cost: task envelopes, bridge zones, notification channel rules
+version: 2
 author: odsh-bridge project
-when_to_use: whenever the operator asks for cross-application/container work (DSH executes), when a task must be handed to the DSH layer, or when reporting bridge collaboration status
+when_to_use: for every incoming operator request, decide whether to handle it yourself or relay it to the DSH execution layer; then use the bridge envelopes when relaying
 ---
 
 # ODSH-Interop Skill (OpenClaw side)
 
 ## Roles
 
-- **OpenClaw (you) = brain / persona**: conversation, memory, dreaming, decisions, final judgement.
-- **DSH (DeepSeek Harness) = execution layer**: heavy cross-application work — tools,
-  code, retrieval, Windows node actions, etc.
+- **OpenClaw (you) = brain / persona**: conversation, memory, dreaming, decisions,
+  final judgement, and the **task router**.
+- **DSH (DeepSeek Harness) = execution layer**: external/cross-application work —
+  tools, code, retrieval, file/batch processing, and (only if the operator enables
+  it) Windows node actions.
 - **Human operator = final arbiter** for anything uncertain.
+
+## Task Routing Decision (do this for EVERY incoming request)
+
+You are the router between **do it myself** and **relay to DSH**. Decide before
+working, and re-decide if a task grows while you work.
+
+### Step 1 — Weight the task (light / medium / heavy)
+
+Estimate the task weight from: number of steps, external systems touched, data
+volume, duration, and how much context it would add to this conversation.
+
+- **Light**: single answer, one tool call, pure dialogue, memory lookup,
+  summarisation, formatting, translation.
+- **Medium**: a few steps, a couple of tools, some file work, short batch.
+- **Heavy**: long/multi-step pipeline, lots of files or data, long-running
+  execution, repeated tool calls, anything that would bloat your context window.
+
+### Step 2 — Compare predicted token cost (the deciding factor)
+
+Compare the predicted token cost of **doing it yourself** versus **relaying to
+DSH** and pick the smaller side:
+
+| Cost model | OpenClaw does it | DSH does it |
+|---|---|---|
+| conversation context growth | high — tools calls/outputs accumulate in your window | low — you only see the envelope + result summary |
+| execution context | your window only | separate process, own context (theirs), your context stays stable |
+| handoff overhead | none | one envelope write + one result read (small, fixed) |
+
+- **Light tasks** usually cost less on your side (relay overhead would exceed the
+  work itself) → **do it yourself**.
+- **Heavy tasks** usually cost more on your side (context bloat from many tool
+  calls) → **relay to DSH**.
+- **Medium tasks**: compare honestly; if roughly equal, keep **neutral bias** —
+  do it yourself unless DSH has an obvious advantage (filesystem-heavy, headless
+  batch, external network work, more separate systems).
+
+### Step 3 — capability check (DSH defaults are limited)
+
+`standard` DSH by default has **no Windows node capability** (windows-node/browser/
+screen/camera are only usable if the operator manually enables them). So:
+
+- For **non-Windows-node** tasks (files, code, fetch, batch, containers, data
+  wrangling): DSH fully available — relay when weight/cost favours it.
+- For **Windows-node** tasks (browser UI automation, screen, camera, Windows
+  desktop actions): do **not** assume DSH can do it; only relay if the operator
+  has confirmed the node is enabled; otherwise answer that it needs the operator
+  to enable the node first.
+
+### Step 4 — never relay these to DSH
+
+- Pure persona/identity/emotional/opinion conversations — always yours.
+- Anything needing final human judgement — hold and ask the operator.
+- Tiny lookups you can do in one call — more costly to relay than to just do.
 
 ## Collaboration channels (bridge zones)
 
@@ -35,19 +90,22 @@ when_to_use: whenever the operator asks for cross-application/container work (DS
 - Atomic writes: always `.tmp` → rename (never write a half file).
 - Result: `output/<taskId>_result.json` with `status / finishedMs / by / payload / human / error`.
 
-## What OpenClaw should do
+## What OpenClaw should do when relaying
 
-1. When a cross-application task should be executed by DSH:
-   - Write an envelope `input/T-*.json` (copy the template in `docs/BRIDGE-SPEC.md`).
-   - Don't block waiting: the DSH daemon picks it up, executes, writes the result and may
-     notify the channel.
-2. When a result arrives in `output/`:
+1. Write an envelope `input/_T-*.json` (copy the template below), including your
+   routing decision in `context`:
+   ```json
+   "context": { "channel": "<id>", "routingDecision": "relay-dsh: heavy, token-cost favourable" }
+   ```
+2. Don't block waiting: the DSH daemon picks it up, executes, writes the result
+   and may notify the channel. Continue your own work meanwhile.
+3. When a result arrives in `output/`:
    - Surface the `human` summary to the operator via your normal channel.
-   - Optionally keep important conclusions in your memory, or drop a note into
-     `<bridge>/openclaw-workspace/dream-feed/` for your dreaming pipeline to digest.
-3. You are the decider, DSH is the doer: anything needing persona/judgement/operator
-   preference stays with you.
-4. Prefer bridge envelopes over touching the other side's private zone.
+   - Keep a concise conclusion in memory; optionally drop a note into
+     `<bridge>/openclaw-workspace/dream-feed/` for your dreaming pipeline.
+4. You are the decider, DSH is the doer: anything needing persona/judgement/
+   operator preference stays with you.
+5. Prefer bridge envelopes over touching the other side's private zone.
 
 ## Template envelope (OpenClaw → DSH)
 
@@ -66,10 +124,22 @@ when_to_use: whenever the operator asks for cross-application/container work (DS
     "args": {}
   },
   "context": {
-    "channel": "<notificationChannelId>"
+    "channel": "<notificationChannelId>",
+    "routingDecision": "relayed_dsh: heavy task, predicted token cost lower on DSH"
   }
 }
 ```
+
+## Worked examples (routing)
+
+| User says | Weight | Route | Why |
+|---|---|---|---|
+| "hi / who are you / tell me a story" | light | yourself | persona/dialogue, one round |
+| "summarise my memory of last week" | light | yourself | one memory call, reply in place |
+| "download this page and extract the tables" | heavy | DSH | network + file + parsing, would bloat your window |
+| "run this analysis over 40 CSV files and give me the totals" | heavy | DSH | batch file work, DSH context stays clean |
+| "search X for posts about LLM agents" | light-heavy | yourself (one web call) or DSH if multiple iterations | compare: one search = you; multi-iteration crawl = DSH |
+| "open the browser, log into the dashboard, take a receipt" | windows-node | ask operator to enable node first | default standard DSH lacks node amples |
 
 ## Setup (once)
 
@@ -85,3 +155,5 @@ or your skills path), then the collaboration works as long as:
 
 - The rest of the integration details live in the odsh-bridge repo
   (`docs/PROTOCOL.md`, `docs/BRIDGE-SPEC.md`, `MAINTENANCE.md`, `src/`).
+- Re-decide the route if the task grows while you work (a "light" starting point
+  can become heavy — switch to relay when the context bloat starts).

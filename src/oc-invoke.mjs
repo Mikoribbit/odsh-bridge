@@ -1,24 +1,24 @@
 #!/usr/bin/env node
-// oc-invoke.mjs — 调用 OpenClaw 网关任意方法（通用）
+// oc-invoke.mjs — invoke any OpenClaw gateway method (generic)
 //
-// 用法：
+// Usage:
 //   node oc-invoke.mjs <method> [paramsJson] [--timeout N] [--raw]
-// 示例（验证环境跑通过）：
+// Examples (each ran and passed in the verify environment):
 //   node oc-invoke.mjs agents.list '{}'
 //   node oc-invoke.mjs doctor.memory.status '{}'
 //   node oc-invoke.mjs status '{}'
 //   node oc-invoke.mjs crestodian.chat '{"message":"hello"}'
 //   node oc-invoke.mjs tools.invoke '{"name":"message","args":{"action":"send","channel":"discord","to":"channel:<channelId>","text":"hi"}}'
 //
-// 配置：.env（OC_HOST / OC_PORT / OC_TOKEN / OC_ORIGIN / OC_KEYS），见 .env.example
+// Config: .env (OC_HOST / OC_PORT / OC_TOKEN / OC_ORIGIN / OC_KEYS), see .env.example
 import { loadEnvFile, envStr, envInt } from './env.mjs';
 import { openSession } from './gateway-client.mjs';
 
 loadEnvFile();
 
 function usage() {
-  console.error('用法: node oc-invoke.mjs <method> [paramsJson] [--timeout N] [--raw]');
-  console.error('示例: node oc-invoke.mjs agents.list \'{}\'');
+  console.error('Usage: node oc-invoke.mjs <method> [paramsJson] [--timeout N] [--raw]');
+  console.error('Example: node oc-invoke.mjs agents.list \'{}\'');
   process.exit(64);
 }
 
@@ -38,7 +38,7 @@ for (let i = 1; i < argv.length; i++) {
 let params = {};
 if (paramsRaw) {
   try { params = JSON.parse(paramsRaw); }
-  catch { console.error('params 不是合法 JSON: ' + paramsRaw); process.exit(64); }
+  catch { console.error('params is not valid JSON: ' + paramsRaw); process.exit(64); }
 }
 
 try {
@@ -59,13 +59,13 @@ try {
 } catch (e) {
   if (e.code === 'PAIRING_REQUIRED') {
     console.error('[!] ' + e.message);
-    console.error('    处理：在 OpenClaw Control UI 批准该设备后重试（或先运行 node oc-client.mjs 等待批准）。');
+    console.error('    Fix: approve the device in the OpenClaw Control UI and retry (or run node oc-client.mjs first to wait for approval).');
     process.exit(3);
   }
   console.error('[!] ' + e.message);
   if (e.code) console.error('    code=' + e.code);
   if (/ECONNREFUSED|ENOTFOUND/.test(e.message || '')) {
-    console.error('    检查：是否与 openclaw 同在 agent-mesh 网络？OC_HOST 应使用容器名 DNS（默认 openclaw），而非 IP。');
+    console.error('    Check: is this container on the same agent-mesh network as openclaw? OC_HOST should use container-name DNS (default openclaw), not an IP.');
   }
   process.exit(1);
 }

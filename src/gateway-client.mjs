@@ -1,15 +1,16 @@
 #!/usr/bin/env node
-// gateway-client.mjs — ODSH Bridge 公共网关客户端模块（三个 CLI 共用）
+// gateway-client.mjs — ODSH Bridge shared gateway client module (used by all three CLIs)
 //
-// 来源：真实环境（2026-08，docker agent-mesh，DeepSeek Harness ↔ OpenClaw/Vivian）
-// 验证过的 `oc_client.mjs` 握手/连接逻辑抽取而成，功能原样保留：
-//   1. 最小 WebSocket-over-net 客户端（零 npm 依赖）
-//   2. Ed25519 设备身份持久化（JWK 存桥 DSH-Workspace，首次生成、后续复用）
-//   3. 配对握手：HTTP Upgrade(显式 Origin) → connect.challenge(nonce)
-//      → 对 v2 claim 串做 Ed25519 签名 → connect → hello-ok
-//   4. 请求-响应帧（JSON-RPC 风格）request() / send()
+// Origin: extracted verbatim from the handshake/connection logic of the `oc_client.mjs` that was
+// verified in the real environment (2026-08, docker agent-mesh, DeepSeek Harness ↔ OpenClaw/Vivian);
+// behavior is preserved as-is:
+//   1. Minimal WebSocket-over-net client (zero npm dependencies)
+//   2. Ed25519 device identity persistence (JWK stored in bridge DSH-Workspace, generated once, reused later)
+//   3. Pairing handshake: HTTP Upgrade (explicit Origin) → connect.challenge(nonce)
+//      → sign the v2 claim string with Ed25519 → connect → hello-ok
+//   4. Request-response frames (JSON-RPC style) via request() / send()
 //
-// 环境变量：见 .env.example（OC_HOST / OC_PORT / OC_TOKEN / OC_ORIGIN / OC_KEYS 等）
+// Environment variables: see .env.example (OC_HOST / OC_PORT / OC_TOKEN / OC_ORIGIN / OC_KEYS etc.)
 import net from 'node:net';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -20,14 +21,14 @@ const subtle = webcrypto.subtle;
 const enc = new TextEncoder();
 
 // ---------------------------------------------------------------------------
-// 协议常量（来自验证环境，勿改）
+// Protocol constants (from the verified environment, do not change)
 // ---------------------------------------------------------------------------
 export const SUB_PROTOCOL = 'json';                 // Sec-WebSocket-Protocol
 export const CONNECT_METHOD = 'connect';
-// 配对成功后授予的角色与 scope（OpenClaw Control UI 批准的 operator 权限）
+// Role and scopes granted after successful pairing (the operator permissions approved in the OpenClaw Control UI)
 export const ROLE = 'operator';
 export const SCOPES = ['operator.admin', 'operator.read', 'operator.write', 'operator.approvals', 'operator.pairing'];
-// 客户端身份描述（验证环境中即用此形态模拟 Control UI）
+// Client identity description (this shape emulated the Control UI in the verify environment)
 export const CLIENT = {
   id: 'openclaw-control-ui',
   version: 'control-ui',
@@ -36,20 +37,21 @@ export const CLIENT = {
 };
 
 // ---------------------------------------------------------------------------
-// 工具函数
+// Utility helpers
 // ---------------------------------------------------------------------------
 const b64url = (b) => Buffer.from(b).toString('base64').replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 const hex = (u8) => Array.from(u8).map((b) => b.toString(16).padStart(2, '0')).join('');
 
-/** base64url 解码为 Buffer */
+/** base64url-decode a string into a Buffer */
 function b64urlToBuf(s) {
   return Buffer.from(s.replaceAll('-', '+').replaceAll('_', '/').replace(/=+$/, ''), 'base64');
 }
 
 /**
- * 安全关闭 net Socket（兼容 node:net 不同 API 形态）：
- * 新版 ESM `node:net` 的 Socket 可能没有 `.close`（为 destroy/resetAndDestroy 取代），
- * 统一走 `.close()` → 兜底 `.destroy()` → 兜底 `.resetAndDestroy()`。
+ * Safely close a net Socket (compat across the different node:net API shapes):
+ * the newer ESM `node:net` Socket may not have `.close` (superseded by destroy/resetAndDestroy),
+ * so try `.close()` → fall back to `.destroy()` → fall back to `.resetAndDestroy()`.
+ * — 中文：新版 node:net 的 Socket 可能没有 .close()，统一用 .close() → .destroy() → .resetAndDestroy() 兜底。
  */
 function safeClose(sock) {
   if (!sock) return;
@@ -59,8 +61,9 @@ function safeClose(sock) {
 }
 
 /**
- * deviceId = hex(SHA-256(Ed25519 公钥 x 字节)) —— 验证环境中就以此作为设备指纹。
- * 公钥不变 → deviceId 恒定 → 首次配对批准后永久有效。
+ * deviceId = hex(SHA-256(Ed25519 public key x bytes)) — this was the device fingerprint in the verify environment.
+ * If the public key is unchanged the deviceId stays constant, so a device approved once stays approved forever.
+ * — 中文：公钥不变 → deviceId 恒定 → 首次配对批准后永久有效。
  */
 async function computeDeviceId(jwk) {
   const xBytes = b64urlToBuf(jwk.x);
@@ -69,13 +72,13 @@ async function computeDeviceId(jwk) {
 }
 
 // ---------------------------------------------------------------------------
-// WebSocket（最小实现：文本帧 + close/ping/pong 控制帧）
+// WebSocket (minimal implementation: text frames + close/ping/pong control frames)
 // ---------------------------------------------------------------------------
 function wsSendFrame(sock, opcode, payloadBuf) {
   const payload = Buffer.from(payloadBuf);
-  const mk = Buffer.from([0x01, 0x02, 0x03, 0x04]);   // 客户端掩码（4 字节，与验证环境一致）
+  const mk = Buffer.from([0x01, 0x02, 0x03, 0x04]);   // client mask (4 bytes, matching the verified environment)
   const out = Buffer.from(payload);
-  for (let i = 0; i < out.length; i++) out[i] ^= mk[i % 4]; // 异或掩码
+  for (let i = 0; i < out.length; i++) out[i] ^= mk[i % 4]; // XOR-mask the payload
   const len = out.length;
   let hdr;
   if (len <= 125) hdr = Buffer.from([0x80 | opcode, 0x80 | len]);
@@ -88,12 +91,12 @@ function wsSendFrame(sock, opcode, payloadBuf) {
   sock.write(Buffer.concat([hdr, Buffer.from(mk), out]));
 }
 
-/** 发送一个文本消息帧（opcode 0x1，FIN=1） */
+/** Send a text message frame (opcode 0x1, FIN=1) */
 function wsSendText(sock, text) {
   wsSendFrame(sock, 0x1, Buffer.from(text, 'utf8'));
 }
 
-/** 发送 pong（opcode 0xA），回应对端 ping —— 健壮性增强，⚠️ 未在验证环境确认网关是否发送 ping */
+/** Send a pong (opcode 0xA) to answer the peer's ping — a robustness enhancement, ⚠️ whether the gateway sends ping was not confirmed in the verify environment */
 function wsPong(sock, payload) {
   wsSendFrame(sock, 0xA, payload);
 }
@@ -112,7 +115,7 @@ async function readN(sock, n, timeoutMs = 8000) {
     try {
       const r = await sock.read(n - buf.length);
       if (r && r.length) buf = Buffer.concat([buf, Buffer.from(r)]);
-    } catch { /* 忽略瞬时读错误 */ }
+    } catch { /* ignore transient read errors */ }
     if (sock.readyState === 'closed') break;
     await new Promise((r) => setTimeout(r, 20));
   }
@@ -126,7 +129,7 @@ async function readHttpResp(sock) {
     try {
       const r = await sock.read(1);
       if (r && r.length) buf = Buffer.concat([buf, Buffer.from(r)]);
-    } catch { /* 忽略 */ }
+    } catch { /* ignore */ }
     await new Promise((r) => setTimeout(r, 10));
   }
   return buf.toString('utf8');
@@ -145,17 +148,17 @@ async function readFrame(sock) {
     const e = await readN(sock, 8);
     len = Number([...e].reduce((a, x) => (a << 8n) | BigInt(x), 0n));
   }
-  if (b1 & 0x80) await readN(sock, 4);            // 服务端帧不应带掩码；防御性跳过
+  if (b1 & 0x80) await readN(sock, 4);            // server frames should not be masked; skip defensively
   const payload = op === 8 ? Buffer.alloc(0) : await readN(sock, len);
   return { op, len, payload };
 }
 
 // ---------------------------------------------------------------------------
-// 设备身份（JWK 持久化）
+// Device identity (JWK persistence)
 // ---------------------------------------------------------------------------
 /**
- * 读取或创建设备身份。
- * @param {string} keyFile  JWK 文件路径（默认 DSH-Workspace/openclaw-device.json）
+ * Read or create the device identity.
+ * @param {string} keyFile  JWK file path (default DSH-Workspace/openclaw-device.json)
  * @returns {Promise<{jwk: object, publicKeyStr: string, deviceId: string}>}
  */
 export async function loadIdentity(keyFile) {
@@ -165,10 +168,10 @@ export async function loadIdentity(keyFile) {
       const deviceId = await computeDeviceId(j.jwk);
       return { jwk: j.jwk, publicKeyStr: j.jwk.x, deviceId };
     }
-    throw new Error('bad identity file (期望 {version:1, jwk:{kty:"OKP",crv:"Ed25519"}}): ' + keyFile);
+    throw new Error('bad identity file (expected {version:1, jwk:{kty:"OKP",crv:"Ed25519"}}): ' + keyFile);
   }
 
-  // 首次运行：生成 Ed25519 密钥对并写入桥的 DSH-Workspace（私钥永不出 DSH 容器）
+  // First run: generate an Ed25519 key pair and write it to the bridge's DSH-Workspace (the private key never leaves the DSH container)
   const kp = await subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
   const jwkFull = await subtle.exportKey('jwk', kp.privateKey);
   const jwk = { kty: 'OKP', crv: 'Ed25519', x: jwkFull.x, d: jwkFull.d };
@@ -179,10 +182,10 @@ export async function loadIdentity(keyFile) {
 }
 
 // ---------------------------------------------------------------------------
-// 配对/连接：openSession()
+// Pairing/connection: openSession()
 // ---------------------------------------------------------------------------
 /**
- * 服务端返回的错误（ok:false 时 error 字段 {code, message}）。code 如 PAIRING_REQUIRED。
+ * Error returned by the server (the error field {code, message} when ok is false). Codes such as PAIRING_REQUIRED.
  */
 export class GatewayError extends Error {
   constructor(code, message) {
@@ -193,19 +196,19 @@ export class GatewayError extends Error {
 }
 
 /**
- * 打开一个已配对的长连接。
- * 流程（验证环境跑通）：
- *   HTTP Upgrade(显式 Origin) → 101 → 收 connect.challenge(nonce)
- *   → Ed25519 签名 v2 claim → 发 connect → 收 {res, ok:true, payload:{type:"hello-ok"}} → 就绪
+ * Open an already-paired long-lived connection.
+ * Flow (verified in the verify environment):
+ *   HTTP Upgrade (explicit Origin) → 101 → receive connect.challenge(nonce)
+ *   → sign the v2 claim with Ed25519 → send connect → receive {res, ok:true, payload:{type:"hello-ok"}} → ready
  *
  * @param {object} o
- * @param {string} [o.host]            默认 openclaw（DNS 容器名，勿用 IP）
- * @param {number} [o.port]            默认 18789
- * @param {string} [o.token]           必填：OpenClaw openclaw.json → gateway.auth.token
- * @param {string} [o.origin]          默认 `http://${host}:${port}`；必须已被网关 allowedOrigins 放行
- * @param {string} [o.keyFile]         默认 `$BRIDGE_PATH/DSH-Workspace/openclaw-device.json`
- * @param {number} [o.connectTimeoutMs] 默认 45000
- * @param {(msg: string) => void} [o.onStatus] 进度回调（CLI 用于打印日志）
+ * @param {string} [o.host]            default openclaw (DNS container name, not IP)
+ * @param {number} [o.port]            default 18789
+ * @param {string} [o.token]           required: OpenClaw openclaw.json → gateway.auth.token
+ * @param {string} [o.origin]          default `http://${host}:${port}`; must be allowed by the gateway's allowedOrigins
+ * @param {string} [o.keyFile]         default `$BRIDGE_PATH/DSH-Workspace/openclaw-device.json`
+ * @param {number} [o.connectTimeoutMs] default 45000
+ * @param {(msg: string) => void} [o.onStatus] progress callback (used by the CLIs to print logs)
  * @returns {Promise<object>} session
  */
 export async function openSession(o = {}) {
@@ -218,21 +221,21 @@ export async function openSession(o = {}) {
   const connectTimeoutMs = o.connectTimeoutMs || Number(process.env.OC_CONNECT_TIMEOUT_MS || '45000');
   const log = o.onStatus || (() => {});
   if (!token) {
-    throw new Error('OC_TOKEN 未设置。请在 .env 填入 OpenClaw openclaw.json → gateway.auth.token 的取值（发布版不含真实 token）。');
+    throw new Error('OC_TOKEN not set. Set it in .env to the value of OpenClaw openclaw.json → gateway.auth.token (the release ships with no real token).');
   }
 
   const identity = await loadIdentity(keyFile);
   log('[i] deviceId = ' + identity.deviceId);
-  log('[i] keyfile  = ' + keyFile + ' (持久身份)');
-  log('[i] target   = ' + host + ':' + port + ' (DNS 容器名)   origin = ' + origin);
+  log('[i] keyfile  = ' + keyFile + ' (persistent identity)');
+  log('[i] target   = ' + host + ':' + port + ' (DNS container name)   origin = ' + origin);
 
-  // 1) TCP → WS 升级（带显式 Origin 头）
+  // 1) TCP → WS upgrade (with an explicit Origin header)
   const sock = await new Promise((resolve, reject) => {
     const s = net.connect({ host, port });
     s.once('error', reject);
     s.setTimeout(15000);
     ensureOpen(s).then((ok) => {
-      if (!ok) { reject(new Error('socket 未在超时内打开: ' + host + ':' + port)); return; }
+      if (!ok) { reject(new Error('socket did not open within the timeout: ' + host + ':' + port)); return; }
       s.removeListener('error', reject);
       resolve(s);
     });
@@ -247,7 +250,7 @@ export async function openSession(o = {}) {
     `Sec-WebSocket-Key: ${key}`,
     'Sec-WebSocket-Version: 13',
     `Sec-WebSocket-Protocol: ${SUB_PROTOCOL}`,
-    `Origin: ${origin}`,   // ⚠️ 网关按 origin 白名单校验（gateway.controlUi.allowedOrigins）
+    `Origin: ${origin}`,   // ⚠️ the gateway validates against the origin allowlist (gateway.controlUi.allowedOrigins)
     '', '',
   ].join('\r\n');
   sock.write(Buffer.from(upgrade));
@@ -255,10 +258,10 @@ export async function openSession(o = {}) {
   log('[<] handshake: ' + (httpResp.split('\r\n')[0] || '(no status line)'));
   if (!httpResp.includes('101')) {
     safeClose(sock);
-    throw new Error('WS 升级被拒绝（检查网关 gateway.controlUi.allowedOrigins 是否放行该 origin）: ' + httpResp.split('\r\n')[0]);
+    throw new Error('WS upgrade was rejected (check whether gateway gateway.controlUi.allowedOrigins allows this origin): ' + httpResp.split('\r\n')[0]);
   }
 
-  // 2) challenge → 签名 connect
+  // 2) challenge → signed connect
   const signKey = await subtle.importKey('jwk', identity.jwk, { name: 'Ed25519' }, false, ['sign']);
   const deadline = Date.now() + connectTimeoutMs;
   let sentConnect = false;
@@ -269,7 +272,7 @@ export async function openSession(o = {}) {
     if (!f) break;
     if (f.op === 8) {
       safeClose(sock);
-      throw new Error('连接阶段收到 close 帧: ' + f.payload.toString('utf8'));
+      throw new Error('received a close frame during the connect phase: ' + f.payload.toString('utf8'));
     }
     if (f.op === 9) { wsPong(sock, f.payload); continue; }
     let m;
@@ -278,9 +281,10 @@ export async function openSession(o = {}) {
 
     if (m.type === 'event' && m.event === 'connect.challenge') {
       const nonce = m.payload.nonce;
-      const signedAt = Date.now(); // 单一时间戳：claim 签名 与 device.signedAt 必须同值，否则网关验签失败(device signature invalid)
-      // claim 串（验证环境格式，字段顺序勿改）：
-      //   v2|<deviceId>|<clientId>|<clientMode>|<role>|<scopes(逗号连接)>|<signedAtMs>|<token>|<nonce>
+      const signedAt = Date.now(); // single timestamp: the claim signature and device.signedAt MUST share this same value, otherwise the gateway fails signature verification (device signature invalid)
+      // 中文：claim 的 signedAt 必须与 device.signedAt 同值（只取一次 Date.now()），否则网关验签失败
+      // claim string (verify-environment format, do not reorder fields):
+      //   v2|<deviceId>|<clientId>|<clientMode>|<role>|<scopes(comma-joined)>|<signedAtMs>|<token>|<nonce>
       const claim = ['v2', identity.deviceId, CLIENT.id, 'webchat', ROLE,
         SCOPES.join(','), String(signedAt), token, nonce].join('|');
       const sig = await subtle.sign({ name: 'Ed25519' }, signKey, enc.encode(claim));
@@ -311,21 +315,21 @@ export async function openSession(o = {}) {
       const err = m.error || {};
       safeClose(sock);
       if (err.code === 'PAIRING_REQUIRED') {
-        throw new GatewayError('PAIRING_REQUIRED', '设备未批准：请在 OpenClaw Control UI 批准 deviceId=' + identity.deviceId);
+        throw new GatewayError('PAIRING_REQUIRED', 'Device not approved: approve deviceId=' + identity.deviceId + ' in the OpenClaw Control UI');
       }
       throw new GatewayError(err.code || 'CONNECT_FAILED', err.message || JSON.stringify(m.payload || err).slice(0, 400));
     }
   }
   if (!sentConnect) {
     safeClose(sock);
-    throw new Error('未收到 connect.challenge（网关未发 nonce？origin 是否被放行？）');
+    throw new Error('did not receive connect.challenge (gateway did not send a nonce? was the origin allowed?)');
   }
   if (!hello) {
     safeClose(sock);
-    throw new Error('connect 超时（' + connectTimeoutMs + 'ms）：网关未返回 hello-ok');
+    throw new Error('connect timed out (' + connectTimeoutMs + 'ms): the gateway did not return hello-ok');
   }
 
-  // 3) 就绪：进入请求-响应循环
+  // 3) Ready: enter the request-response loop
   const pending = new Map();
   let closed = false;
   const onCloseCallbacks = [];
@@ -348,10 +352,11 @@ export async function openSession(o = {}) {
         if (m.ok) p.resolve(m.payload ?? {});
         else p.reject(new GatewayError(m.error?.code || 'REQUEST_FAILED', m.error?.message || JSON.stringify(m).slice(0, 400)));
       }
-      // 其余 frame（events/notifications）：当前无订阅者，忽略。可在此扩展事件订阅。
+      // Other frames (events/notifications) currently have no subscribers, so they are ignored. Event subscription could be extended here.
+      // 中文：其余 event/notification 帧当前无订阅者，忽略；可在此扩展事件订阅。
     }
     closed = true;
-    for (const p of pending.values()) { clearTimeout(p.timer); p.reject(new Error('连接已关闭')); }
+    for (const p of pending.values()) { clearTimeout(p.timer); p.reject(new Error('connection closed')); }
     pending.clear();
     try { safeClose(sock); } catch { /* ignore */ }
     for (const cb of onCloseCallbacks) { try { cb(); } catch { /* ignore */ } }
@@ -362,21 +367,21 @@ export async function openSession(o = {}) {
     hello,
     origin,
 
-    /** 请求-响应：发 {type:'req', id, method, params}，等匹配的 {type:'res', id} */
+    /** Request-response: send {type:'req', id, method, params}, wait for the matching {type:'res', id} */
     request(method, params = {}, { timeoutMs } = {}) {
       const id = crypto.randomUUID();
       const wait = timeoutMs || Number(process.env.OC_REPLY_TIMEOUT_MS || '20000');
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           pending.delete(id);
-          reject(new Error('请求超时（' + wait + 'ms）: ' + method));
+          reject(new Error('request timed out (' + wait + 'ms): ' + method));
         }, wait);
         pending.set(id, { resolve, reject, timer });
         wsSendText(sock, JSON.stringify({ type: 'req', id, method, params }));
       });
     },
 
-    /** 单向发送（不回 id 匹配等待） */
+    /** One-way send (does not wait for a matching id) */
     send(method, params = {}) {
       const id = crypto.randomUUID();
       wsSendText(sock, JSON.stringify({ type: 'req', id, method, params }));
@@ -395,5 +400,5 @@ export async function openSession(o = {}) {
   };
 }
 
-// 供 CLI 复用的小工具
+// Small helpers reused by the CLIs
 export { b64url, hex };

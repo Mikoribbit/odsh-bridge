@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// oc-client.mjs — 长连接/配对等待客户端（验证环境用它等待 Control UI 批准）
+// oc-client.mjs — long-lived connection / pairing-wait client (the verify environment used it to wait for Control UI approval)
 //
-// 用法：
-//   node oc-client.mjs connect            # 若未配对则每 OC_RETRY_MS 重连等待；获批后保持会话
-//   node oc-client.mjs node <method> [paramsJson]   # 连接一次，发一个请求，打印回复后退出
+// Usage:
+//   node oc-client.mjs connect            # if not paired, keeps retrying every OC_RETRY_MS; holds the session once approved
+//   node oc-client.mjs node <method> [paramsJson]   # connect once, send one request, print the reply, exit
 //
-// 与 oc-invoke 的区别：oc-client 面向“保持会话/等待批准”场景，失败自动重试；
-// oc-invoke 面向一次性脚本调用，失败快速失败并给出提示。
+// Difference from oc-invoke: oc-client targets the "keep a session / wait for approval" scenario and auto-retries on failure;
+// oc-invoke targets one-shot script calls and fails fast with a hint.
 import { loadEnvFile, envInt, envStr } from './env.mjs';
 import { openSession, GatewayError } from './gateway-client.mjs';
 
@@ -21,12 +21,12 @@ async function waitAndConnect() {
     let session = null;
     try {
       session = await openSession({ onStatus: (m) => console.log(m) });
-      console.log('[oc-client] 会话就绪，保持长连（复现环境行为：已批准设备连上即算打通）。');
+      console.log('[oc-client] session ready; holding the long-lived connection (mirrors the verify environment: an approved device connecting is considered a success).');
       console.log('[oc-client] hello-ok -> ' + JSON.stringify(session.hello).slice(0, 400));
-      // 保持会话：断开后自动重连（DNS 地址，容器重启/IP 对调不影响）
+      // Hold the session: auto-reconnect on disconnect (DNS addressing, unaffected by container restart / IP swap)
       await new Promise((resolve) => {
         session.onClose(() => {
-          console.log('[oc-client] 会话关闭，' + (retryMs / 1000) + 's 后重连...');
+          console.log('[oc-client] session closed; reconnecting in ' + (retryMs / 1000) + 's...');
           resolve();
         });
       });
@@ -35,9 +35,9 @@ async function waitAndConnect() {
     } catch (e) {
       if (e instanceof GatewayError && e.code === 'PAIRING_REQUIRED') {
         console.log('[oc-client] ' + e.message);
-        console.log('[oc-client]  -> 在 OpenClaw Control UI 批准 deviceId 后会自动连上（每 ' + (retryMs / 1000) + 's 重试）。');
+        console.log('[oc-client]  -> it connects automatically once the deviceId is approved in the OpenClaw Control UI (retrying every ' + (retryMs / 1000) + 's).');
       } else {
-        console.log('[oc-client] 连接失败: ' + e.message);
+        console.log('[oc-client] connection failed: ' + e.message);
       }
       try { session?.close(); } catch { /* ignore */ }
       await new Promise((r) => setTimeout(r, retryMs));
@@ -48,14 +48,14 @@ async function waitAndConnect() {
 async function sendNodeRequest() {
   const method = process.argv[3];
   if (!method) {
-    console.error('用法: node oc-client.mjs node <method> [paramsJson]');
+    console.error('Usage: node oc-client.mjs node <method> [paramsJson]');
     process.exit(64);
   }
   let params = {};
   const raw = process.argv[4];
   if (raw) {
     try { params = JSON.parse(raw); }
-    catch { console.error('params 不是合法 JSON'); process.exit(64); }
+    catch { console.error('params is not valid JSON'); process.exit(64); }
   }
   try {
     const session = await openSession({ onStatus: (m) => console.log(m) });

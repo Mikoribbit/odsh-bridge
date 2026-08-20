@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// env.mjs — 零依赖 .env 加载（发布版新增的管道设施，非握手逻辑）。
-// 规则：
-//   - 默认读当前工作目录的 .env，可用 OC_ENV_FILE 覆盖路径；
-//   - 已存在的进程环境变量优先（shell 里 export 的变量不会被 .env 覆盖）；
-//   - 支持 `#` 注释行与简单引号；不支持行内注释与多行值。
+// env.mjs — zero-dependency .env loader (a plumbing helper added for the release, not handshake logic).
+// Rules:
+//   - Reads .env from the current working directory by default; override the path with OC_ENV_FILE;
+//   - Already-set process environment variables take priority (variables exported in the shell are not overridden by .env);
+//   - Supports `#` comment lines and simple quoting; does not support inline comments or multi-line values.
 import { existsSync, readFileSync } from 'node:fs';
 
 export function loadEnvFile(file = process.env.OC_ENV_FILE || '.env') {
@@ -25,7 +25,7 @@ export function loadEnvFile(file = process.env.OC_ENV_FILE || '.env') {
   }
 }
 
-// 读环境变量；空串视为未设置（走默认值）。
+// Read an environment variable; an empty string is treated as unset (falls back to the default).
 export function envStr(name, def = '') {
   const v = process.env[name];
   return v === undefined || v === '' ? def : v;

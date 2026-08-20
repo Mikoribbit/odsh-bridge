@@ -1,187 +1,235 @@
-# ODSH Bridge — OpenClaw × DeepSeek Harness 互联桥
+# ODSH Bridge — OpenClaw × DeepSeek Harness connectivity bridge
 
-> **一句话定位**：让 DeepSeek Harness（DSH，执行层）通过 WebSocket 接入 OpenClaw/Vivian（大脑/人格层）的网关，
-> 并用一个共享目录桥（信封 + 守护进程）完成两个容器之间的可靠任务交接。
+> **One-line positioning**: lets DeepSeek Harness (DSH, the execution layer) reach the OpenClaw/Vivian (brain/persona layer)
+> gateway over WebSocket, and hand off tasks reliably between the two containers through a shared directory bridge
+> (envelope + daemon).
 >
-> 所有能力均来自 2026-08 在 docker `agent-mesh` 网络上的真实集成并跑通验证；未验证/推测项一律标注 `⚠️ 需自行验证`。
-> 认证信息全部为占位符——任何真实 token/密钥都不应出现在此仓库。
+> Everything here comes from a real integration that was run and verified in 2026-08 on the docker `agent-mesh`
+> network; anything not verified or speculative is marked `⚠️ verify yourself`.
+> All credentials are placeholders — no real token/secret should ever appear in this repository.
 
 ---
 
-## 1. 架构（文字版）
+## 1. Architecture (text version)
 
 ```
 ┌────────────────────────────── agent-mesh (docker network) ──────────────────────────────┐
 │                                                                                         │
 │   deepseek-harness (DSH)                        openclaw (OpenClaw / Vivian)             │
 │   ├─ oc-invoke.mjs  ──┐                                                                    │
-│   ├─ oc-send.mjs   ───┼── WebSocket(:18789) ─────▶  gateway（Device Pairing +            │
-│   ├─ oc-client.mjs ───┘   显式 Origin / Ed25519       JSON-RPC 风格方法）                │
-│   │                     签名配对 / tools.invoke      ├─ agents.list / status              │
-│   └─ bridge-daemon.mjs                              ├─ doctor.memory.*（dreaming 记忆）   │
-│         │                                           └─ message（Discord 频道收发）        │
-│         └── 共享桥挂载：Input/ Output/ DSH-Workspace/ Openclaw-Workspace/  （信封协议）     │
+│   ├─ oc-send.mjs   ───┼── WebSocket(:18789) ─────▶  gateway (Device Pairing +           │
+│   ├─ oc-client.mjs ───┘   explicit Origin / Ed25519    JSON-RPC-style methods)           │
+│   │                      signed pairing / tools.invoke ├─ agents.list / status            │
+│   └─ bridge-daemon.mjs                                ├─ doctor.memory.* (dreaming)       │
+│         │                                             └─ message (Discord send/recv)      │
+│         └── shared bridge mount: Input/ Output/ DSH-Workspace/ Openclaw-Workspace/  (envelope)│
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-数据流两条：
+There are two data flows:
 
-1. **实时通道**：DSH 脚本作为「已配对设备」连入 OpenClaw 网关 18789（HTTP Upgrade + origin 白名单 + Ed25519 签名配对 + `connect.challenge` → `hello-ok`），随后按 JSON-RPC 风格调用方法。
-2. **异步桥**：任一侧把任务写成 `Input/T-*.json` 信封 → daemon 监听执行 → `Output/<taskId>_result.json` 原子回写，可选经 `oc-send` 通知 Discord 频道。
-
----
-
-## 2. 已验证特性
-
-> 以下每一项都是真实环境下实测跑通的。
-
-- ✅ **网关 WebSocket 握手 + Ed25519 设备配对**：HTTP Upgrade（带显式 `Origin`）→ `connect.challenge`（nonce）→ `v2` claim 串签名 → `connect` → `hello-ok`；设备经 Control UI 批准（operator 角色 + 5 个 scope），`deviceId = hex(SHA-256(Ed25519 公钥))` 恒定，批准一次永久有效。**已知坑已修**：claim 与 `device.signedAt` 必须取同一次 `Date.now()`（毫秒不一致会偶发 `device signature invalid`，见 docs/PROTOCOL.md §2.3）。
-- ✅ **网关方法调用**：`agents.list`、`status`、`doctor.memory.status`（dreaming 记忆系统）、`crestodian.chat`。
-- ✅ **Discord 消息（经 tools.invoke）**：`message` 工具 `action=send` 发消息（`reply.ok && payload.ok` 判定 DELIVERED）；`action=read` 读频道历史——args `{action:"read",channel:"discord",to:"channel:<id>"}` 已实测（返回完整消息列表，2026-08-20 验证）。
-- ✅ **桥四区 + 信封协议**：`Input/` 任务入口、`Output/` 结果出口、`DSH-Workspace/` / `Openclaw-Workspace/` 双方私有区；信封 schema `odsh-envelope/v1`，状态机 `queued→running→done|failed|cancelled`，`odsh-result/v1` 结果文件。
-- ✅ **守护进程**：`bridge-daemon.mjs` watch `Input/T-*.json` → 按 `payload.kind` 执行（echo / notify / run-command / write-file / read-file / bridge-status）→ 原子写（`.tmp`→rename）→ 可选 `oc-send` 频道通知；按 `taskId` 幂等防重复处理。
-- ✅ **DNS 寻址**：默认 `OC_HOST=openclaw` 容器名 + origin 动态构造，容器重启/IP 对调无需改配置（验证环境实测双容器 IP 曾互换）。
-- ✅ **身份持久化**：Ed25519 JWK 存桥 `DSH-Workspace/openclaw-device.json`（首次生成、后续复用、deviceId 恒定），文件权限 0600。
+1. **Realtime channel**: A DSH script connects to the OpenClaw gateway on 18789 as a "paired device"
+   (HTTP Upgrade + origin allowlist + Ed25519 signature pairing + `connect.challenge` → `hello-ok`),
+   then calls methods in a JSON-RPC style.
+2. **Async bridge**: Either side writes a task envelope to `Input/T-*.json` → the daemon watches and
+   executes it → atomically writes back `Output/<taskId>_result.json`, optionally notifying a Discord
+   channel via `oc-send`.
 
 ---
 
-## 3. 快速开始
+## 2. Verified features
 
-### 先决条件（环境准备，均在真实环境验证过）
+> Each item below was actually exercised and passed in the real environment.
 
-- 两个容器在同一 docker 网络（本项目示例名 `agent-mesh`），容器名分别为 `deepseek-harness` 与 `openclaw`；**两者都必须能互相 ping 通对方容器名**。
-- 共享桥挂载到两侧容器内同一绝对路径（默认 `/root/ODSH-bridge`；宿主机 `H:/ODSH-bridge`，见 `docker-compose.snippet.yml`）。
-- OpenClaw 侧网关放行（见 `docs/PROTOCOL.md` §2.1）：
-  - `gateway.controlUi.allowedOrigins` 显式包含将要使用的 origin（如 `http://openclaw:18789`）；⚠️ 该路径是受保护配置，需直接编辑 `openclaw.json`（先备份）并重启网关生效。
-  - （可选）`autoApproveCidrs` 加入 `172.18.0.0/16` 免逐台批准。
+- ✅ **Gateway WebSocket handshake + Ed25519 device pairing**: HTTP Upgrade (with explicit `Origin`) →
+  `connect.challenge` (nonce) → sign the `v2` claim string → `connect` → `hello-ok`; the device is
+  approved through the Control UI (operator role + 5 scopes). `deviceId = hex(SHA-256(Ed25519 public
+  key))` stays constant, so a device approved once stays approved forever. **Known pitfall fixed**: the
+  claim and `device.signedAt` must come from the same `Date.now()` call (a millisecond mismatch
+  intermittently raises `device signature invalid`, see docs/PROTOCOL.md §2.3).
+- ✅ **Gateway method calls**: `agents.list`, `status`, `doctor.memory.status` (dreaming memory system),
+  `crestodian.chat`.
+- ✅ **Discord messages (via tools.invoke)**: the `message` tool with `action=send` posts a message
+  (`reply.ok && payload.ok` means DELIVERED); `action=read` reads channel history — the args
+  `{action:"read",channel:"discord",to:"channel:<id>"}` were verified (returns the full message list,
+  verified 2026-08-20).
+- ✅ **Bridge four zones + envelope protocol**: `Input/` task entry, `Output/` result exit, and the two
+  per-side private zones `DSH-Workspace/` / `Openclaw-Workspace/`; envelope schema `odsh-envelope/v1`,
+  state machine `queued→running→done|failed|cancelled`, `odsh-result/v1` result files.
+- ✅ **Daemon**: `bridge-daemon.mjs` watches `Input/T-*.json` → executes per `payload.kind`
+  (echo / notify / run-command / write-file / read-file / bridge-status) → atomic write
+  (`.tmp`→rename) → optional `oc-send` channel notification; idempotent per `taskId`.
+- ✅ **DNS addressing**: default `OC_HOST=openclaw` container name + dynamically built origin, so a
+  container restart or IP swap needs no config change (in the verify environment the two container IPs
+  actually swapped).
+- ✅ **Identity persistence**: the Ed25519 JWK is stored at the bridge `DSH-Workspace/openclaw-device.json`
+  (generated on first run, reused afterwards, constant `deviceId`), file mode 0600.
 
-### 部署步骤（3 步 + 1 次批准）
+---
+
+## 3. Quick start
+
+### Prerequisites (environment prep, all verified in the real environment)
+
+- Both containers are on the same docker network (this project's example name is `agent-mesh`), named
+  `deepseek-harness` and `openclaw`; **both must be able to ping the other container's name**.
+- The shared bridge is mounted at the same absolute path inside both containers (default
+  `/root/ODSH-bridge`; host `H:/ODSH-bridge`, see `docker-compose.snippet.yml`).
+- The OpenClaw gateway side is opened up (see `docs/PROTOCOL.md` §2.1):
+  - `gateway.controlUi.allowedOrigins` explicitly includes the origin you will use
+    (e.g. `http://openclaw:18789`); ⚠️ this path is a protected config — edit `openclaw.json` directly
+    (back it up first) and restart the gateway for it to take effect.
+  - (Optional) add `172.18.0.0/16` to `autoApproveCidrs` to skip per-device approval.
+
+### Deployment steps (3 steps + 1 approval)
 
 ```bash
-# 1. 配置环境（在 DSH 容器内，仓库根目录）
+# 1. Configure the environment (inside the DSH container, repo root)
 cp .env.example .env
-#   编辑 .env：OC_TOKEN=<openclaw.json → gateway.auth.token 的取值>；按需填 DISCORD_CHANNEL_ID 等
+#   edit .env: set OC_TOKEN=<the value of openclaw.json → gateway.auth.token>; fill DISCORD_CHANNEL_ID etc. as needed
 
-# 2. 配对 + 连接测试
+# 2. Pair + connection test
 node src/oc-client.mjs connect
-#   首次会打印「设备未批准」，到 OpenClaw Control UI 批准该 deviceId 后自动连上并保持会话
+#   on first run it prints "device not approved"; approve that deviceId in the OpenClaw Control UI and it connects and stays
 
-# 3a. 部署守护进程（daemon 全部 kind 见 docs/BRIDGE-SPEC.md §6；单次可用 --once）
+# 3a. Deploy the daemon (all kinds see docs/BRIDGE-SPEC.md §6; single pass with --once)
 node src/bridge-daemon.mjs --notify --interval-ms 5000
-# 3b. 其它时候手动调网关
-#   node src/oc-invoke.mjs agents.list '{}'   # 通用方法
-#   node src/oc-send.mjs "你好" --channel <id> # 发 Discord 消息
+# 3b. Otherwise invoke the gateway manually
+#   node src/oc-invoke.mjs agents.list '{}'   # generic method
+#   node src/oc-send.mjs "hello" --channel <id> # send a Discord message
 ```
 
 ---
 
-## 4. 配置（.env 字段）
+## 4. Configuration (.env fields)
 
-| 变量 | 默认值 | 说明 |
+| Variable | Default | Description |
 |---|---|---|
-| `OC_HOST` | `openclaw` | 网关容器名（DNS，勿用 IP） |
-| `OC_PORT` | `18789` | 网关端口 |
-| `OC_TOKEN` | （必填） | `openclaw.json → gateway.auth.token` 的取值；**占位符 REPLACE_WITH_GATEWAY_TOKEN** |
-| `OC_ORIGIN` | `http://<host>:<port>` | 动态构造；需被网关 allowedOrigins 放行 |
-| `OC_KEYS` | `<BRIDGE_PATH>/DSH-Workspace/openclaw-device.json` | 设备身份 JWK 文件（自动生成/复用） |
-| `BRIDGE_PATH` | `/root/ODSH-bridge` | 桥根路径 |
-| `DISCORD_CHANNEL_ID` | （空） | 通知/发送目标频道 id |
-| `OC_RETRY_MS` | `8000` | oc-client 配对等待/重连间隔 |
-| `OC_CONNECT_TIMEOUT_MS` | `45000` | 连接（握手+配对）超时 |
-| `OC_REPLY_TIMEOUT_MS` | `20000` | 单次 request 超时 |
-| `BRIDGE_INTERVAL_MS` | `5000` | daemon 扫描间隔 |
-| `BRIDGE_RUN_TIMEOUT_MS` | `15000` | `run-command` 超时 |
-| `BRIDGE_ALLOW_ABS_PATHS` | `false` | write/read-file 是否允许绝对路径（安全默认 false） |
-| `OC_SEND_SCRIPT` | `src/oc-send.mjs` | 通知用发送脚本路径 |
+| `OC_HOST` | `openclaw` | Gateway container name (DNS, not IP) |
+| `OC_PORT` | `18789` | Gateway port |
+| `OC_TOKEN` | (required) | The value of `openclaw.json → gateway.auth.token`; **placeholder REPLACE_WITH_GATEWAY_TOKEN** |
+| `OC_ORIGIN` | `http://<host>:<port>` | Built dynamically; must be allowed by the gateway's allowedOrigins |
+| `OC_KEYS` | `<BRIDGE_PATH>/DSH-Workspace/openclaw-device.json` | Device identity JWK file (auto-generated/reused) |
+| `BRIDGE_PATH` | `/root/ODSH-bridge` | Bridge root path |
+| `DISCORD_CHANNEL_ID` | (empty) | Target channel id for notifications/sends |
+| `OC_RETRY_MS` | `8000` | oc-client pairing wait / reconnect interval |
+| `OC_CONNECT_TIMEOUT_MS` | `45000` | Connection (handshake + pairing) timeout |
+| `OC_REPLY_TIMEOUT_MS` | `20000` | Single request timeout |
+| `BRIDGE_INTERVAL_MS` | `5000` | daemon scan interval |
+| `BRIDGE_RUN_TIMEOUT_MS` | `15000` | `run-command` timeout |
+| `BRIDGE_ALLOW_ABS_PATHS` | `false` | Whether write/read-file may use absolute paths (secure default false) |
+| `OC_SEND_SCRIPT` | `src/oc-send.mjs` | Path to the send script used for notifications |
 
 ---
 
-## 5. 目录结构
+## 5. Directory structure
 
 ```
 plugin-release/
-├── README.md                  本文档
+├── README.md                  This document
 ├── docs/
-│   ├── PROTOCOL.md            网关握手/帧/方法/错误/幂等
-│   └── BRIDGE-SPEC.md         桥四区 / 信封 schema / 状态机 / 原子写
+│   ├── PROTOCOL.md            Gateway handshake / frames / methods / errors / idempotency
+│   └── BRIDGE-SPEC.md         Bridge four zones / envelope schema / state machine / atomic write
 ├── src/
-│   ├── env.mjs                .env 加载（零依赖）
-│   ├── gateway-client.mjs     公共 WS+配对模块（openSession/request/safeClose）
-│   ├── oc-invoke.mjs          通用网关方法调用 CLI
-│   ├── oc-send.mjs            Discord 消息 CLI（tools.invoke message）
-│   ├── oc-client.mjs          长连接/配对等待 CLI（connect / node <method>）
-│   └── bridge-daemon.mjs      桥守护进程（watch 信封 → 执行 → 回写 → 通知）
+│   ├── env.mjs                .env loading (zero dependencies)
+│   ├── gateway-client.mjs     Shared WS+pairing module (openSession/request/safeClose)
+│   ├── oc-invoke.mjs          Generic gateway method invocation CLI
+│   ├── oc-send.mjs            Discord message CLI (tools.invoke message)
+│   ├── oc-client.mjs          Long-connection / pairing-wait CLI (connect / node <method>)
+│   └── bridge-daemon.mjs      Bridge daemon (watch envelopes → execute → write back → notify)
 ├── config/
-│   ├── odsh-bridge.ts         Cordis 插件编排（B 方式）
-│   └── cordis.yml             合并片段示例
-├── docker-compose.snippet.yml 桥挂载 + agent-mesh 网络片段
-├── package.json               元数据 + bin + npm run check
-├── .env.example               配置样例（全占位符）
+│   ├── odsh-bridge.ts         Cordis plugin orchestration (method B)
+│   └── cordis.yml             Merge-snippet example
+├── docker-compose.snippet.yml Bridge mount + agent-mesh network snippet
+├── package.json               Metadata + bin + npm run check
+├── .env.example               Config sample (all placeholders)
 ├── LICENSE                    MIT
-└── CONTRIBUTING.md            本地复现 / 加 kind / 测试
+└── CONTRIBUTING.md            Local reproduction / adding kinds / testing
 ```
 
 ---
 
-## 6. 两种集成方式
+## 6. Two integration approaches
 
-### A. 独立 node CLI / 守护进程（推荐，已验证形态）
+### A. Standalone node CLI / daemon (recommended, verified form)
 
-- 零构建零 npm 依赖，`node src/xxx.mjs` 直接用；`.env` 由 `src/env.mjs` 自动加载。
-- 连接关闭统一走 `safeClose()`（`gateway-client.mjs`）：新版 `node:net` ESM 的 Socket 只有 `destroy()/resetAndDestroy()`，没有 `.close()`，兼容层优先 `.close()` → `.destroy()` → `.resetAndDestroy()`，全部调用点已替换（请勿在新增代码里直接用 `sock.close()`）。
-- 守护进程常驻：`node src/bridge-daemon.mjs --notify --interval-ms 5000`（用 systemd/supervisor 托管即可）。
-- 本仓库所有脚本在此形态下交付使用；与你现有 DSH 主进程解耦，互不阻塞。
+- Zero build, zero npm dependencies, run `node src/xxx.mjs` directly; `.env` is auto-loaded by `src/env.mjs`.
+- Connections always close through `safeClose()` (`gateway-client.mjs`): the newer `node:net` ESM Socket has
+  only `destroy()/resetAndDestroy()`, no `.close()`; the compatibility layer prefers `.close()` →
+  `.destroy()` → `.resetAndDestroy()`, and all call sites have been updated (do not call `sock.close()`
+  directly in new code).
+- Daemon runs as a long-lived process: `node src/bridge-daemon.mjs --notify --interval-ms 5000`
+  (manage with systemd/supervisor).
+- All scripts in this repo ship in this form; they are decoupled from your existing DSH main process and
+  do not block each other.
 
-### B. 作为 Cordis 插件挂进 DSH（⚠️ 未在产品环境实测）
+### B. Mounted into DSH as a Cordis plugin (⚠️ not tested in the product environment)
 
-- DSH 是 Cordis 体系：`config/odsh-bridge.ts` 用 `export function apply(ctx, config)` 形态，在 `ctx.effect()` 内以子进程拉起 `bridge-daemon.mjs`，卸载/热更新时 SIGTERM 回收——与官方 cordis-tutorial（02-lifecycle-and-effects.md）的原则一致。
-- `config/cordis.yml` 是 `insert:` 合并片段（同 DSH `examples/mcp-memory/*.cordis.yml` 的语法），把 daemon 作为插件条目挂进根 `cordis.yml`：
-  - 优点：随 DSH 生命周期托管，热更新可回收子进程；
-  - 注意：脚本仍作为独立进程运行，只是生命周期由 Cordis 管理；
-  - ⚠️ 该挂载路径未在产品环境实测，请先按文档 A 方式跑通，再切换。
-
----
-
-## 7. 安全注意事项
-
-1. **token 绝不入库**：`OC_TOKEN` 只存在于 `.env`（已 gitignore）；仓库里的 `.env.example` 全是占位符。
-2. **设备配对**：`deviceId` 是设备指纹（Ed25519 公钥的哈希），批准即给予 operator 级权限（含 `operator.admin`/`approvals`/`pairing`）——务必确保网络隔离，不要随意批准陌生设备。
-3. **origin 白名单**：宽泛放行降低安全性，生产环境只放行实际使用的 origin；改白名单需重启网关生效。
-4. **私钥权限**：JWK 文件生成即 `0600`，位于 DSH-Workspace（对方容器不得改）。
-5. **run-command**：daemon 的 `run-command` 有 shell 执行能力（原样校验：首词禁 `;`、`&`、`|`、反引号），仅限可信信封来源；生产建议额外加 requester 白名单（见 BRIDGE-SPEC §8）。
+- DSH is Cordis-based: `config/odsh-bridge.ts` uses an `export function apply(ctx, config)` shape and, inside
+  `ctx.effect()`, spawns `bridge-daemon.mjs` as a child process, reclaiming it with SIGTERM on unload/hot-reload —
+  consistent with the official cordis-tutorial (02-lifecycle-and-effects.md) principles.
+- `config/cordis.yml` is an `insert:` merge snippet (same syntax as DSH `examples/mcp-memory/*.cordis.yml`)
+  that hooks the daemon into the root `cordis.yml` as a plugin entry:
+  - Pros: hosted with the DSH lifecycle, hot-reload can reclaim the child process;
+  - Note: the script still runs as an independent process, only its lifecycle is managed by Cordis;
+  - ⚠️ this mount path was not tested in the product environment — get method A working first, then switch.
 
 ---
 
-## 8. 常见故障排查
+## 7. Security notes
 
-| 现象 | 原因 | 处理 |
+1. **Never commit tokens**: `OC_TOKEN` lives only in `.env` (gitignored); everything in the repo's
+   `.env.example` is a placeholder.
+2. **Device pairing**: `deviceId` is a device fingerprint (a hash of the Ed25519 public key); approving it
+   grants operator-level permissions (including `operator.admin`/`approvals`/`pairing`) — make sure your
+   network is isolated and do not approve unknown devices casually.
+3. **Origin allowlist**: broad openings lower security; in production only allow the origin you actually use;
+   changing the allowlist requires a gateway restart to take effect.
+4. **Private key permissions**: the JWK file is created `0600` and lives in DSH-Workspace (the other container
+   must not modify it).
+5. **run-command**: the daemon's `run-command` can execute shell (verbatim check: the first word may not start
+   with `;`, `&`, `|`, or a backtick) — only trust envelope sources; in production add a requester
+   allowlist (see BRIDGE-SPEC §8).
+
+---
+
+## 8. Troubleshooting (common failures)
+
+| Symptom | Cause | Fix |
 |---|---|---|
-| `spawn <script> ENOENT` | 用 DSH 的 tool-runner exec 通道拉起脚本时找不到命令/环境 | 换用长会话（`oc-client connect`）+ 手动 shell 启动 daemon；或把 node 路径写全（`which node`）。⚠️ 验证环境该问题存在，需自行验证你的 DSH 运行器配置。 |
-| `ECONNREFUSED / ENOTFOUND` | 连不到网关 | 检查两容器是否在同一 docker 网络、容器名是否正确（`docker exec openclaw getent hosts openclaw`） |
-| `handshake rejected / 非 101` | origin 未放行 | 把所用 origin 加入 `gateway.controlUi.allowedOrigins` 并重启网关（先备份 openclaw.json） |
-| 容器 IP 对调后连接失效 | 硬编码了 IP | 全部改用容器名 DNS（默认 `OC_HOST=openclaw`），重启后无需重配 |
-| `device signature invalid`（偶发、似随机） | **确凿根因（控制变量实验确认）**：claim 签名时间戳与 `device.signedAt` 用了两次 `Date.now()` → 毫秒级不一致 → 网关用 `signedAt` 重建 claim 验签必然失败，仅同毫秒时偶发通过 | 若代码遇到此错，**先检查是否两处时间戳**：应只取一次 `const signedAt = Date.now()`，同时用于 claim 与 device.signedAt（参考 `src/gateway-client.mjs` 现实现；已修复并 4/4 连续成功，health/agents.list/status/oc-send 全通） |
-| `PAIRING_REQUIRED` | 设备未批准 | Control UI 批准该 deviceId，随后自动重连成功 |
-| daemon 不处理信封 | 已处理（.state 记录）/文件名非 `T-*.json` | 清 `.state` 或换新 taskId；检查文件权限 |
+| `spawn <script> ENOENT` | The command/environment is missing when the script is launched through DSH's tool-runner exec channel | Use a long-lived session (`oc-client connect`) + start the daemon from a manual shell; or give the full node path (`which node`). ⚠️ this problem exists in the verify environment; verify your DSH runner config. |
+| `ECONNREFUSED / ENOTFOUND` | Cannot reach the gateway | Check that both containers are on the same docker network and the container name is correct (`docker exec openclaw getent hosts openclaw`) |
+| `handshake rejected / non-101` | origin not allowed | Add the origin you use to `gateway.controlUi.allowedOrigins` and restart the gateway (back up openclaw.json first) |
+| Connection breaks after container IP swap | An IP was hardcoded | Use container-name DNS everywhere (default `OC_HOST=openclaw`); no reconfiguration needed after restart |
+| `device signature invalid` (intermittent, looks random) | **Confirmed root cause (verified by controlled-variable experiment)**: the claim signature timestamp and `device.signedAt` used two separate `Date.now()` calls → millisecond mismatch → the gateway rebuilds the claim from `signedAt` to verify the signature and necessarily fails, only occasionally passing when both land in the same millisecond | If you hit this error, **first check whether there are two timestamps**: take a single `const signedAt = Date.now()` and use it for both the claim and `device.signedAt` (see the current implementation in `src/gateway-client.mjs`; already fixed and passing 4/4 in a row — health/agents.list/status/oc-send all OK) |
+| `PAIRING_REQUIRED` | Device not approved | Approve that deviceId in the Control UI, then it reconnects automatically |
+| daemon does not process envelopes | Already processed (recorded in `.state`) / filename is not `T-*.json` | Clear `.state` or use a new taskId; check file permissions |
 
 ---
 
-## 9. Roadmap（未实现 / 未验证 → 全部标注 ⚠️）
+## 9. Roadmap (not implemented / not verified → all marked ⚠️)
 
-- **F-1** Windows Node 执行节点（`target: windows-node`）桥接：信封 `target` 预留，执行器未实现 ⚠️。
-- **F-2** ~~读方向补齐~~ **已实测通过**：`message` 工具 `action=read` 的 args 形态为 `{action:"read",channel:"discord",to:"channel:<id>"}`，`tools.invoke` 可返回完整频道历史（2026-08-20 实测）。
-- **F-3** ~~网关 anti-replay / signature invalid 的稳定处理~~ **已解决**：根因是 claim 与 `device.signedAt` 用了两次 `Date.now()`（毫秒级不一致），已统一为单一 `signedAt` 并 4/4 实测通过；剩余可选项是自动重试策略（低优先级）。
-- **F-4** daemon 的 `requester` 白名单可启用开关（生产加固）⚠️。
-- **F-5** 持久化订阅网关事件（`caps:["tool-events"]`）——连接阶段的 `event` 帧当前忽略 ⚠️。
+- **F-1** Windows Node execution node (`target: windows-node`) bridging: the envelope `target` is reserved
+  but the executor is not implemented ⚠️.
+- **F-2** ~~Completing the read direction~~ **verified working**: the `message` tool's `action=read` args
+  form is `{action:"read",channel:"discord",to:"channel:<id>"}`, and `tools.invoke` can return the full
+  channel history (verified 2026-08-20).
+- **F-3** ~~Stable handling of gateway anti-replay / signature invalid~~ **resolved**: the root cause was the
+  claim and `device.signedAt` using two separate `Date.now()` calls (millisecond mismatch); unified to a
+  single `signedAt` and verified passing 4/4; the remaining optional item is an automatic retry policy
+  (low priority).
+- **F-4** A switch to enable the daemon's `requester` allowlist (production hardening) ⚠️.
+- **F-5** Persistent subscription to gateway events (`caps:["tool-events"]`) — the `event` frames during the
+  connect phase are currently ignored ⚠️.
 
 ---
 
-## 10. 相关链接
+## 10. Related links
 
-- DSH：`/app/docs/cordis-tutorial/`（插件形态）、DSH examples/mcp-memory（cordis.yml 合并语法）
-- GitHub topic：`dsh-plugin`（本仓库发布后加入该 topic）
-- 协议细节：docs/PROTOCOL.md ｜ 桥规范：docs/BRIDGE-SPEC.md
+- DSH: `/app/docs/cordis-tutorial/` (plugin form), DSH examples/mcp-memory (cordis.yml merge syntax)
+- GitHub topic: `dsh-plugin` (add this topic after publishing this repo)
+- Protocol details: docs/PROTOCOL.md ｜ Bridge spec: docs/BRIDGE-SPEC.md
 
 ---
 
-> 维护：ODSH Bridge contributors · License: MIT · Node >= 18 · 零依赖 ESM
+> Maintained by: ODSH Bridge contributors · License: MIT · Node >= 18 · Zero-dependency ESM

@@ -14,7 +14,7 @@
 
 > 本文为英文 README.md 的中文对照版。
 
-> **一句话定位**：让 DeepSeek Harness（DSH，执行层）通过 WebSocket 接入 OpenClaw/Vivian（大脑/人格层）的网关，
+> **一句话定位**：让 DeepSeek Harness（DSH，执行层）通过 WebSocket 接入 OpenClaw（大脑/人格层）的网关，
 > 并用一个共享目录桥（信封 + 守护进程）完成两个容器之间的可靠任务交接。
 >
 > 所有能力均来自 2026-08 在 docker `agent-mesh` 网络上的真实集成并跑通验证；未验证/推测项一律标注 `⚠️ 需自行验证`。
@@ -43,7 +43,7 @@
 ```
 ┌────────────────────────────── agent-mesh (docker network) ──────────────────────────────┐
 │                                                                                         │
-│   deepseek-harness (DSH)                        openclaw (OpenClaw / Vivian)             │
+│   deepseek-harness (DSH)                        openclaw (OpenClaw)             │
 │   ├─ oc-invoke.mjs  ──┐                                                                    │
 │   ├─ oc-send.mjs   ───┼── WebSocket(:18789) ─────▶  gateway（Device Pairing +            │
 │   ├─ oc-client.mjs ───┘   显式 Origin / Ed25519       JSON-RPC 风格方法）                │

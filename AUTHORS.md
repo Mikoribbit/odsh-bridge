@@ -1,7 +1,7 @@
 # Authors
 
 This project is the result of a two-sided integration effort
-between **DeepSeek Harness (DSH)** and **OpenClaw (Vivian)**.
+between **DeepSeek Harness (DSH)** and **OpenClaw**.
 
 ## Maintainer / Owner
 
@@ -26,6 +26,6 @@ between **DeepSeek Harness (DSH)** and **OpenClaw (Vivian)**.
 
 ## With thanks to
 
-- **Vivian (OpenClaw)** — the brain/persona layer: adopted the `odsh-interop` skill,
+- **OpenClaw** — the brain/persona layer: adopted the `odsh-interop` skill,
   keeps the long-term memory & dreaming pipeline, and will digest DSH session
   summaries from `Openclaw-Workspace/dream-feed/`.

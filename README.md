@@ -12,7 +12,7 @@
 
 </div>
 
-> **One-line positioning**: lets DeepSeek Harness (DSH, the execution layer) reach the OpenClaw/Vivian (brain/persona layer)
+> **One-line positioning**: lets DeepSeek Harness (DSH, the execution layer) reach the OpenClaw (brain/persona layer)
 > gateway over WebSocket, and hand off tasks reliably between the two containers through a shared directory bridge
 > (envelope + daemon).
 >
@@ -43,7 +43,7 @@
 ```
 ┌────────────────────────────── agent-mesh (docker network) ──────────────────────────────┐
 │                                                                                         │
-│   deepseek-harness (DSH)                        openclaw (OpenClaw / Vivian)             │
+│   deepseek-harness (DSH)                        openclaw (OpenClaw)             │
 │   ├─ oc-invoke.mjs  ──┐                                                                    │
 │   ├─ oc-send.mjs   ───┼── WebSocket(:18789) ─────▶  gateway (Device Pairing +           │
 │   ├─ oc-client.mjs ───┘   explicit Origin / Ed25519    JSON-RPC-style methods)           │

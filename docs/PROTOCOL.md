@@ -1,12 +1,12 @@
 # ODSH Bridge 通信协议（PROTOCOL）
 
-对应 `src/gateway-client.mjs`。内容来自 2026-08 在 docker `agent-mesh` 网络上实际跑通并验证的集成：DeepSeek Harness（DSH）↔ OpenClaw/Vivian（网关端口 18789）。只写验证过的行为；未验证项一律标注「⚠️ 需自行验证」。
+对应 `src/gateway-client.mjs`。内容来自 2026-08 在 docker `agent-mesh` 网络上实际跑通并验证的集成：DeepSeek Harness（DSH）↔ OpenClaw（网关端口 18789）。只写验证过的行为；未验证项一律标注「⚠️ 需自行验证」。
 
 ## 1. 拓扑与寻址
 
 ```
 agent-mesh (docker network)
-  deepseek-harness (DSH)                  openclaw (OpenClaw/Vivian)
+  deepseek-harness (DSH)                  openclaw (OpenClaw)
   ├ oc-invoke.mjs                         ├ gateway :18789
   ├ oc-send.mjs   ──WebSocket──▶          ├ 设备配对（Ed25519 指纹）
   ├ oc-client.mjs    （显式 Origin）        └ JSON-RPC 风格方法（agents.list 等）

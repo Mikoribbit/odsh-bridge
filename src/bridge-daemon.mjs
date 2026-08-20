@@ -58,8 +58,8 @@ function executePayload(task) {
         return { error: e.message, stderr: String(e.stderr || '').slice(0, 2000) };
       }
     }
-    // run-command is for trusted envelope sources only; the first-word charset check (rejects ; & | and backtick) refuses unsafe commands
-    // 中文：run-command 仅限可信信封来源；首词字符集校验（禁 ; & | 反引号）拒绝执行。
+    // run-command is only for trusted envelope sources; its first-word charset check (rejects ;, &, |, and backtick) refuses unsafe commands
+    // 中文：run-command 仅限可信信封来源；首词字符集校验（禁 ; & | 反引号）拒绝不安全的命令。
     case 'write-file': {
       const { file, content } = p.args || {};
       if (!file) return { error: 'no file' };

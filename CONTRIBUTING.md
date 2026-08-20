@@ -1,13 +1,13 @@
-# 贡献指南（CONTRIBUTING）
+# Contribution Guide (CONTRIBUTING)
 
-## 本地复现（最小环境）
+## Local reproduction (minimal environment)
 
-- 需要：Node.js >= 18（无需 npm 依赖，纯 ESM `.mjs`）。
-- 方案 A（完整）：按 `docker-compose.snippet.yml` 起 agent-mesh 网络 + 两个容器 → 共享桥挂载 →
-  `cp .env.example .env` 填写 → `node src/oc-client.mjs connect`（Control UI 批准后自动连上）→
-  `node src/bridge-daemon.mjs --notify`。
-- 方案 B（可离线）：只用桥，不连网关。把 `BRIDGE_PATH` 指向一个空目录，
-  手工投信封后用 `--once` 验证：
+- Requires: Node.js >= 18 (no npm dependencies, pure ESM `.mjs`).
+- Option A (full): following `docker-compose.snippet.yml`, bring up the agent-mesh network + two containers → mount the shared bridge →
+  `cp .env.example .env` and fill it in → `node src/oc-client.mjs connect` (connects automatically after approval in the Control UI) →
+  `node src/bridge-daemon.mjs --notify`.
+- Option B (offline): use only the bridge, no gateway. Point `BRIDGE_PATH` at an empty directory,
+  drop an envelope in manually, then verify with `--once`:
 
 ```bash
 mkdir -p /tmp/bridge-dev/Input /tmp/bridge-dev/Output
@@ -17,25 +17,26 @@ cat > /tmp/bridge-dev/Input/T-dev-01.json <<'EOF'
  "payload":{"kind":"echo","text":"dev smoke"},"result":null}
 EOF
 BRIDGE_PATH=/tmp/bridge-dev node src/bridge-daemon.mjs --once
-cat /tmp/bridge-dev/Output/T-dev-01_result.json   # 期待 status: done
+cat /tmp/bridge-dev/Output/T-dev-01_result.json   # expecting status: done
 ```
 
-## 新增 payload.kind（四步）
+## Adding a new payload.kind (four steps)
 
-1. 在 `src/bridge-daemon.mjs` 的 `executePayload()` switch 加一个 case（返回可 JSON 序列化对象）。
-2. 在 `docs/BRIDGE-SPEC.md` §6 表格加一行。
-3. 按上面方案 B 写一条对应信封冒烟验证（含失败分支）。
-4. 运行 `node --check src/bridge-daemon.mjs` 与 `npm run check`。
+1. Add a case to the `executePayload()` switch in `src/bridge-daemon.mjs` (returning a JSON-serializable object).
+2. Add one row to the table in `docs/BRIDGE-SPEC.md` §6.
+3. Write a matching envelope smoke test based on Option B above (including the failure branch).
+4. Run `node --check src/bridge-daemon.mjs` and `npm run check`.
 
-## 关于协议实现
+## About the protocol implementation
 
-- 握手/签名/帧格式改动请同步 `docs/PROTOCOL.md` 与 `src/gateway-client.mjs`；
-- 不要在代码里写死 token/密钥/频道 id：一律从环境变量取，样例写 `.env.example` 占位；
-- 未在真实网关验证过的分支（如 ping/pong、read 动作、expiresMs 过期）必须保留注释里的
-  `⚠️ 需自行验证` 标注，README 特性清单只列已验证项。
+- Handshake/signature/frame changes must be kept in sync with `docs/PROTOCOL.md` and `src/gateway-client.mjs`;
+- Never hardcode tokens/keys/channel ids in code: always read them from environment variables, with
+  placeholders written in `.env.example`;
+- Branches not yet verified against a real gateway (e.g. ping/pong, the read action, `expiresMs` expiry) must keep
+  the `⚠️ verify yourself` marker in their comments, and the README feature list may only include verified items.
 
-## 测试与提交
+## Testing and committing
 
-- 最小冒烟：`npm run check`（全部脚本语法）+ 方案 B 的信封跑通 + 一次身份持久化验证
-  （两次 `loadIdentity` 得到相同 deviceId）。
-- 提交信息用简洁英文或中文均可；一行概括 + 必要正文。
+- Minimal smoke: `npm run check` (syntax of all scripts) + one Option B envelope run + one identity-persistence check
+  (two `loadIdentity` calls yield the same `deviceId`).
+- Commit messages: concise English, or Chinese if you prefer; one-line summary plus a body only when needed.

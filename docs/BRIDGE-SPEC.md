@@ -1,20 +1,20 @@
-# ODSH Bridge 目录桥规范（BRIDGE-SPEC）
+# ODSH Bridge Directory-Bridge Spec (BRIDGE-SPEC)
 
-对应 `src/bridge-daemon.mjs` 与验证环境 `/root/ODSH-bridge` 的四区桥。原则：一切跨容器协作 = 通过信封（envelope）交接，机器可读、可重试、可追溯。
+Corresponds to `src/bridge-daemon.mjs` and the four-zone bridge at `/root/ODSH-bridge` in the verified environment. Principle: all cross-container collaboration happens via envelopes — machine-readable, retryable, traceable.
 
-## 1. 目录总纲（四区）
+## 1. Directory Overview (Four Zones)
 
 ```
 /root/ODSH-bridge/
-├── Input/                 # [SHARED] 任务入口：T-*.json（信封）
-├── Output/                # [SHARED] 结果出口：<taskId>_result.json
-├── DSH-Workspace/         # [PRIVATE] DSH 私有：身份 JWK/草稿/日志（OpenClaw 不得改）
-└── Openclaw-Workspace/    # [PRIVATE] OpenClaw 私有：记忆/摘要/dream-feed（DSH 不得改）
+├── Input/                 # [SHARED] task entry: T-*.json (envelopes)
+├── Output/                # [SHARED] result exit: <taskId>_result.json
+├── DSH-Workspace/         # [PRIVATE] DSH-private: identity JWK/drafts/logs (OpenClaw must not modify)
+└── Openclaw-Workspace/    # [PRIVATE] OpenClaw-private: memory/summaries/dream-feed (DSH must not modify)
 ```
 
-两侧容器都把它挂到同一宿主目录（验证环境：宿主 `H:/ODSH-bridge` → 容器内 `/root/ODSH-bridge`，见 docker-compose.snippet.yml）。
+Both containers mount it to the same host directory (verified environment: host `H:/ODSH-bridge` → in-container `/root/ODSH-bridge`, see docker-compose.snippet.yml).
 
-## 2. 信封格式（Input/<taskId>.json）
+## 2. Envelope Format (Input/<taskId>.json)
 
 ```json
 {
@@ -32,24 +32,25 @@
 }
 ```
 
-必填：`taskId / type / status / requester / target / createdMs / payload`；`expiresMs / context / result` 可选。
+Required: `taskId / type / status / requester / target / createdMs / payload`; `expiresMs / context / result` optional.
 
-## 3. 状态机
+## 3. State Machine
 
 ```
 queued -> running -> done
-   |          |        -> failed (附 error)
-   |          +-> failed (超时/放弃)
+   |          |        -> failed (with error)
+   |          +-> failed (timeout/abandoned)
    +-> cancelled
 ```
 
-推进规则：
+Advancement rules:
 
-- 写入方每步可更新信封内 `status`，或只写结果文件；
-- 读取方**不得修改 Input 原始文件**，结果写到 `Output/<taskId>_result.json`；
-- 原子写：一律先写 `.tmp`，再 `rename`（mv）成正式名，避免对端读到半截文件。
+- The writer may update `status` in the envelope at each step, or just write the result file;
+- The reader **must not modify the original Input file**; results go to `Output/<taskId>_result.json`;
+- Atomic write: always write `.tmp` first, then `rename` (mv) to the final name, so the peer never reads a half-written file.
+- zh: 原子写规则：先写 .tmp 再 rename 成正式名，防止对端读到半截文件。
 
-## 4. 结果文件（Output/<taskId>_result.json）
+## 4. Result Files (Output/<taskId>_result.json)
 
 ```json
 {
@@ -59,45 +60,45 @@ queued -> running -> done
   "finishedMs": 1787249903000,
   "by": "dsh | openclaw",
   "payload": { "...": "..." },
-  "human": "任务 T-260820-01 完成",
+  "human": "Task T-260820-01 complete",
   "error": null
 }
 ```
 
-`human` 为可直接投频道的人工可读摘要。
+`human` is a human-readable summary that can be posted directly to a channel.
 
-## 5. 命名与冲突避免
+## 5. Naming & Conflict Avoidance
 
-- 任务 id：`T-<YYMMDD>-<两位序号>`（例 `T-260820-01`）；daemon 以**信封文件名 basename** 作为 taskId（`T-*.json`）。
-- 结果：同 id + `_result.json`；附件：`Output/<taskId>_att-<序号>.<ext>`。
-- 双方各自维护 `Input/.state/<requester>.json` 记录已处理 id 防重复（DSH 侧：`dsh-processed.json`）。
+- Task ids: `T-<YYMMDD>-<two-digit sequence>` (e.g. `T-260820-01`); the daemon uses the **envelope filename basename** as the taskId (`T-*.json`).
+- Results: same id + `_result.json`; attachments: `Output/<taskId>_att-<sequence>.<ext>`.
+- Each side maintains `Input/.state/<requester>.json` recording processed ids to avoid duplicates (DSH side: `dsh-processed.json`).
 
-## 6. payload.kind（DSH daemon 已验证实现）
+## 6. payload.kind (implemented and verified by the DSH daemon)
 
-| kind | payload 字段 | 输出 |
+| kind | payload fields | output |
 |---|---|---|
-| echo | `text` 或 `command` | `{echoed}` |
-| notify | `text` / `items` | `{ack:true, from, text}`（记录并确认） |
-| run-command | `command` | `{stdout}` 或 `{error,stderr}` |
+| echo | `text` or `command` | `{echoed}` |
+| notify | `text` / `items` | `{ack:true, from, text}` (recorded and acknowledged) |
+| run-command | `command` | `{stdout}` or `{error,stderr}` |
 | write-file | `args.{file,content}` | `{written}` |
-| read-file | `args.file` | `{content}`（截 4000 字符） |
-| bridge-status | — | `{input,output}` 文件计数 |
+| read-file | `args.file` | `{content}` (truncated to 4000 chars) |
+| bridge-status | — | `{input,output}` file counts |
 
-运行细节（与验证环境一致）：
+Operational details (matching the verified environment):
 
-- `run-command`：`/bin/sh -c`，超时 15s，stdout 截 4000；首词字符集校验（禁 `;`、`&`、`|` 与反引号字符）拒绝执行。
-- `write-file / read-file`：绝对路径直接使用；相对路径解析到桥根；发布版新增 `BRIDGE_ALLOW_ABS_PATHS`（默认 `false`）可禁绝对路径 ⚠️ 安全默认值建议 false，按你的信任模型调整。
-- 扫描区间：`--interval-ms`（默认 5000）；`--once` 单次；已处理 id 跳过（幂等）。
+- `run-command`: `/bin/sh -c`, 15 s timeout, stdout truncated at 4000; first-word charset validation (forbids `;`, `&`, `|` and backtick characters) refuses execution.
+- `write-file / read-file`: absolute paths are used directly; relative paths resolve against the bridge root; the release build adds `BRIDGE_ALLOW_ABS_PATHS` (default `false`) to disable absolute paths ⚠️ `false` is the recommended safe default — adjust per your trust model.
+- Scan interval: `--interval-ms` (default 5000); `--once` for a single pass; already-processed ids are skipped (idempotent).
 
-## 7. 原子写示例（daemon 内）
+## 7. Atomic Write Example (inside the daemon)
 
 ```js
 writeFileSync(tmp, JSON.stringify(result, null, 2)); // <taskId>_result.json.tmp
 renameSync(tmp, fin);                                // → <taskId>_result.json
 ```
 
-## 8. 安全
+## 8. Security
 
-- 四区所有权：DSH 不进 Openclaw-Workspace，OpenClaw 不进 DSH-Workspace；身份 JWK 只属于 DSH-Workspace。
-- `run-command` 有执行能力：仅对信封来源可信/白名单 requester 开放；发布版默认保留原实现的原样校验（首词字符合检查），生产部署建议加 requester 白名单。
-- 所有文件 UTF-8 + LF；敏感信息不入库（`.env` / gitignore 已排除）。
+- Four-zone ownership: DSH never enters Openclaw-Workspace, OpenClaw never enters DSH-Workspace; the identity JWK belongs exclusively to DSH-Workspace.
+- `run-command` has execution capability: only open to envelope requesters that are trusted/whitelisted; the release build keeps the original validation as-is (first-word charset check), and production deployments should add a requester whitelist.
+- All files UTF-8 + LF; sensitive info never committed (`.env` / gitignore already exclude it).

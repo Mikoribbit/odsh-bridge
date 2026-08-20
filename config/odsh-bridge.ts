@@ -1,12 +1,13 @@
 /**
- * ODSH Bridge — Cordis 插件编排（参考形态，⚠️ 未在产品环境验证）
+ * ODSH Bridge — Cordis plugin orchestration (reference form, ⚠️ not verified in a product environment)
  *
- * 说明：
- *   - 验证过的形态是「独立 node 进程」：`node src/bridge-daemon.mjs --notify`。
- *   - 本文件提供把 daemon 挂进 DeepSeek Harness（Cordis）的编排方式：apply 时以子进程
- *     拉起 daemon，unload 时 SIGTERM 回收。副作用（子进程）由 ctx.effect() 管理，
- *     与官方教程 02-lifecycle-and-effects.md 的写法一致。
- *   - 依赖：@deepseek-ai/cordis（DSH 运行时内置）。
+ * Notes:
+ *   - The verified form is a standalone node process: `node src/bridge-daemon.mjs --notify`.
+ *   - This file provides the orchestration to mount the daemon into DeepSeek Harness (Cordis): on apply it
+ *     spawns the daemon as a child process, and on unload it reclaims it via SIGTERM. Side effects (the child
+ *     process) are managed with ctx.effect(), matching the writing style of the official tutorial
+ *     02-lifecycle-and-effects.md.
+ *   - Dependency: @deepseek-ai/cordis (bundled with the DSH runtime).
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
@@ -16,15 +17,15 @@ import type { Context } from '@deepseek-ai/cordis';
 export const name = 'odsh-bridge-daemon';
 
 export interface ODSHBridgeConfig {
-  /** 桥根路径（默认 /root/ODSH-bridge） */
+  /** Bridge root path (default /root/ODSH-bridge) */
   bridgePath?: string;
-  /** daemon 脚本路径（默认 <repo>/src/bridge-daemon.mjs） */
+  /** daemon script path (default <repo>/src/bridge-daemon.mjs) */
   script?: string;
-  /** 扫描间隔 ms（默认 5000） */
+  /** scan interval in ms (default 5000) */
   intervalMs?: number;
-  /** 完成后是否经 oc-send 通知 Discord 频道（需 .env 已有 DISCORD_CHANNEL_ID） */
+  /** whether to notify a Discord channel via oc-send after completion (requires DISCORD_CHANNEL_ID in .env) */
   notify?: boolean;
-  /** 追加传给 daemon 的环境变量 */
+  /** extra environment variables passed to the daemon */
   env?: Record<string, string>;
 }
 
@@ -46,17 +47,17 @@ export function apply(ctx: Context, config: ODSHBridgeConfig = {}) {
     });
     child.on('exit', (code, signal) => {
       if (code !== 0 && signal !== 'SIGTERM') {
-        console.error(`[odsh-bridge] daemon 异常退出 code=${code} signal=${signal}`);
+        console.error(`[odsh-bridge] daemon exited abnormally code=${code} signal=${signal}`);
       }
     });
 
-    // disposer：插件卸载/热更新时回收子进程
+    // disposer: reclaim the child process on plugin unload / hot-reload
     return () => {
       try { child.kill('SIGTERM'); } catch { /* ignore */ }
     };
   });
 
-  console.log(`[odsh-bridge] daemon 已随插件启动: ${script} (interval=${intervalMs}ms, notify=${config.notify ?? false})`);
+  console.log(`[odsh-bridge] daemon started with the plugin: ${script} (interval=${intervalMs}ms, notify=${config.notify ?? false})`);
 }
 
 export default apply;

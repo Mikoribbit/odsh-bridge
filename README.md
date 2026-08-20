@@ -174,7 +174,7 @@ cp skills/odsh-interop/SKILL.md /root/.openclaw/skills/odsh-interop/SKILL.md
 ```
 plugin-release/
 ├── README.md                  This document (EN)
-├── README.zh.md               Chinese translation
+├── README.zh.md               Chinese version (this document, zh)
 ├── AUTHORS.md                 Maintainer / contributors
 ├── CHANGELOG.md               Version history (Keep a Changelog)
 ├── MAINTENANCE.md             Verified troubleshooting notes
@@ -281,7 +281,7 @@ plugin-release/
 
 - DSH: `/app/docs/cordis-tutorial/` (plugin form), DSH examples/mcp-memory (cordis.yml merge syntax)
 - GitHub topic: `dsh-plugin` (add this topic after publishing this repo)
-- Protocol details: docs/PROTOCOL.md ｜ Bridge spec: docs/BRIDGE-SPEC.md
+- Protocol details: `docs/PROTOCOL.md` · Bridge spec: `docs/BRIDGE-SPEC.md`
 
 ---
 

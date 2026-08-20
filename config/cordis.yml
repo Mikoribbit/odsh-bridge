@@ -1,0 +1,18 @@
+# ODSH Bridge —— Cordis 合并片段（参考，⚠️ 未在产品环境验证）
+#
+# 用法（与 DSH examples/mcp-memory/*.cordis.yml 相同的 insert 合并语法）：
+#   - 把本文件内容并入 DeepSeek Harness 应用的根 cordis.yml（同名键合并），或
+#   - 在自己的部署覆盖层里 patch 进来；`name` 是模块说明符（相对路径或 npm 包名）。
+#
+# 注意：DSH 根 cordis.yml 是条目列表；示例里的合并形态是：
+#   - insert: [{ id, name, config }]
+#
+# 推荐：先在 DSH 容器内用独立进程方式验证（README「快速开始」），
+# 需要随 DSH 生命周期托管时再启用本插件。
+- insert:
+    - id: odsh-bridge
+      name: './config/odsh-bridge'      # 按你的仓库布局调整相对路径
+      config:
+        bridgePath: /root/ODSH-bridge    # 与 compose 挂载点一致
+        intervalMs: 5000
+        notify: false                    # 需在 .env 配置 DISCORD_CHANNEL_ID 后再开 true

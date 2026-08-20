@@ -1,0 +1,18 @@
+# 环境与密钥（绝不入库）
+.env
+*.local
+*.jwk
+*device.json
+
+# 运行产物
+node_modules/
+Input/.state/
+Output/
+DSH-Workspace/
+Openclaw-Workspace/
+
+# 编辑器/系统
+.DS_Store
+*.log
+.idea/
+.vscode/

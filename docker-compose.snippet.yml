@@ -1,0 +1,38 @@
+# ODSH Bridge —— docker-compose 片段（桥挂载 + agent-mesh 网络）
+#
+# 用途：把两个容器放进同一 agent-mesh 网络，并把共享桥挂进两侧（等效于验证环境的
+#   H:/ODSH-bridge -> /root/ODSH-bridge）。这是片段：镜像/入口请按你的实际镜像替换。
+#
+# ⚠️ 需自行验证：image 与 command 取决于你的 DSH / OpenClaw 镜像（验证环境用现有镜像，
+#    本片段以占位符给出）。桥宿主路径可用环境变量 ODSH_BRIDGE_HOST_DIR 覆盖
+#    （默认 `H:/ODSH-bridge`，Docker Desktop Windows 风格；Linux 传绝对路径即可）。
+#
+# 使用：docker compose -f docker-compose.snippet.yml up -d   （或并入你的主 compose）
+
+networks:
+  agent-mesh:
+    driver: bridge
+    # 若已有同名网络：改用 `name: agent-mesh` + external: true
+
+services:
+  # ---------- DSH：执行层（本仓库脚本所在容器） ----------
+  deepseek-harness:
+    image: your-dsh-image:latest            # ⚠️ 替换为你的 DSH 镜像
+    container_name: deepseek-harness
+    networks: [agent-mesh]
+    volumes:
+      - ${ODSH_BRIDGE_HOST_DIR:-H:/ODSH-bridge}:/root/ODSH-bridge    # 共享桥（两侧一致）
+      - ./src:/opt/odsh-bridge/src:ro
+      - ./.env:/opt/odsh-bridge/.env:ro
+    # 可选：让 DSH 容器常驻并托管 daemon（command 取决于你的镜像入口，⚠️ 需自行验证）
+    # command: /bin/sh -c "cd /opt/odsh-bridge && node src/bridge-daemon.mjs --notify --interval-ms 5000 & exec /entrypoint.sh"
+
+  # ---------- OpenClaw：大脑/人格层（含 18789 网关） ----------
+  openclaw:
+    image: your-openclaw-image:latest       # ⚠️ 替换为你的 OpenClaw 镜像
+    container_name: openclaw
+    networks: [agent-mesh]
+    volumes:
+      - ${ODSH_BRIDGE_HOST_DIR:-H:/ODSH-bridge}:/root/ODSH-bridge
+    # 网关监听 18789；origin 放行见 docs/PROTOCOL.md 2.1（allowedOrigins 需列
+    # http://openclaw:18789 与 http://localhost:18789 等）

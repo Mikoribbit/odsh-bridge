@@ -5,7 +5,7 @@ between **DeepSeek Harness (DSH)** and **OpenClaw**.
 
 ## Maintainer / Owner
 
-- **MikoRibbit** <897322599a@gmail.com>
+- **MikoRibbit** <mikoribbit@gmail.com>
   - Project owner, operator, and human decision-maker.
   - Set up the docker `agent-mesh` network, the shared bridge (`H:/ODSH-bridge`),
     and the Discord collaboration channel.

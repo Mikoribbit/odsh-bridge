@@ -97,6 +97,19 @@ There are two data flows:
 
 ## 3. Quick start
 
+### 3.0 Get the project (no release yet — clone or download)
+
+There is no packaged release yet; get the code from this repository:
+
+```bash
+git clone https://github.com/Mikoribbit/odsh-bridge.git
+cd odsh-bridge
+# zero dependencies — nothing to install; `.env` is auto-loaded by `src/env.mjs`
+```
+
+Or download the ZIP from the green **Code ▾ → Download ZIP** button on GitHub
+and unpack it.
+
 ### Prerequisites (environment prep, all verified in the real environment)
 
 - Both containers are on the same docker network (this project's example name is `agent-mesh`), named
@@ -125,6 +138,12 @@ node src/bridge-daemon.mjs --notify --interval-ms 5000
 # 3b. Otherwise invoke the gateway manually
 #   node src/oc-invoke.mjs agents.list '{}'   # generic method
 #   node src/oc-send.mjs "hello" --channel <id> # send a Discord message
+
+# 4. Install the OpenClaw-side skill (without it, OpenClaw doesn't know how to cooperate)
+#    on the OpenClaw container:
+mkdir -p /root/.openclaw/skills/odsh-interop
+cp skills/odsh-interop/SKILL.md /root/.openclaw/skills/odsh-interop/SKILL.md
+#    see skills/odsh-interop/README.md for details
 ```
 
 ---
@@ -154,10 +173,16 @@ node src/bridge-daemon.mjs --notify --interval-ms 5000
 
 ```
 plugin-release/
-├── README.md                  This document
+├── README.md                  This document (EN)
+├── README.zh.md               Chinese translation
+├── AUTHORS.md                 Maintainer / contributors
+├── CHANGELOG.md               Version history (Keep a Changelog)
+├── MAINTENANCE.md             Verified troubleshooting notes
 ├── docs/
 │   ├── PROTOCOL.md            Gateway handshake / frames / methods / errors / idempotency
 │   └── BRIDGE-SPEC.md         Bridge four zones / envelope schema / state machine / atomic write
+├── skills/
+│   └── odsh-interop/          OpenClaw-side skill (SKILL.md + install README)
 ├── src/
 │   ├── env.mjs                .env loading (zero dependencies)
 │   ├── gateway-client.mjs     Shared WS+pairing module (openSession/request/safeClose)

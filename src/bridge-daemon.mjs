@@ -15,8 +15,8 @@ const NOTIFY = process.argv.includes('--notify');
 const ONCE = process.argv.includes('--once');
 const idxi = process.argv.indexOf('--interval-ms');
 const INTERVAL_MS = Number(idxi >= 0 ? process.argv[idxi + 1] : 5000) || 5000;
-const CHANNEL = '1540063599605579837';
-const SEND_SCRIPT = '/root/ODSH-bridge/DSH-Workspace/tools/oc_send.mjs';
+const CHANNEL = process.env.DISCORD_CHANNEL_ID || ''; // override via .env; if empty, notifications are skipped
+const SEND_SCRIPT = process.env.OC_SEND_SCRIPT || '/root/ODSH-bridge/DSH-Workspace/tools/oc_send.mjs';
 
 mkdirSync(STATE, { recursive: true });
 
@@ -82,7 +82,10 @@ function executePayload(task) {
 }
 
 function notifyChannel(text) {
-  if (!NOTIFY || !existsSync(SEND_SCRIPT)) return false;
+  if (!NOTIFY || !CHANNEL || !existsSync(SEND_SCRIPT)) {
+    if (NOTIFY && !CHANNEL) log('notify skipped: DISCORD_CHANNEL_ID not set');
+    return false;
+  }
   try {
     const out = execFileSync('node', [SEND_SCRIPT, CHANNEL, text], { timeout: 25000, encoding: 'utf8' });
     log('notify ok', out.slice(0, 200));

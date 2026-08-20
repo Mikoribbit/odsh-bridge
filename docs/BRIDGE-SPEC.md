@@ -22,12 +22,12 @@
   "taskId": "T-260820-01",
   "type": "execute | query | notify | bridge-status | interop",
   "status": "queued",
-  "requester": "dsh | openclaw | miko",
+  "requester": "dsh | openclaw | human",
   "target": "dsh | openclaw | windows-node | both",
   "createdMs": 1787249900000,
   "expiresMs": 1787336000000,
   "payload": { "kind": "echo", "text": "..." },
-  "context": { "channel": "<discordChannelId>", "sessionKey": "agent:main:main" },
+  "context": { "channel": "<discordChannelId>", "sessionKey": "<agentSessionKey>" },
   "result": null
 }
 ```

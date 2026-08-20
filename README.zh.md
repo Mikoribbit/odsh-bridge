@@ -77,6 +77,18 @@
 
 ## 3. 快速开始
 
+### 3.0 获取项目（暂无 release——clone 或下载）
+
+尚未发布打包版；直接从本仓库获取代码：
+
+```bash
+git clone https://github.com/Mikoribbit/odsh-bridge.git
+cd odsh-bridge
+# 零依赖：无需安装任何包；`.env` 由 `src/env.mjs` 自动加载
+```
+
+或用 GitHub 主页绿色 **Code ▾ → Download ZIP** 下载解压。
+
 ### 先决条件（环境准备，均在真实环境验证过）
 
 - 两个容器在同一 docker 网络（本项目示例名 `agent-mesh`），容器名分别为 `deepseek-harness` 与 `openclaw`；**两者都必须能互相 ping 通对方容器名**。
@@ -101,6 +113,12 @@ node src/bridge-daemon.mjs --notify --interval-ms 5000
 # 3b. 其它时候手动调网关
 #   node src/oc-invoke.mjs agents.list '{}'   # 通用方法
 #   node src/oc-send.mjs "你好" --channel <id> # 发 Discord 消息
+
+# 4. 安装 OpenClaw 侧 skill（没有它，OpenClaw 不知道如何协作）
+#    在 OpenClaw 容器内执行：
+mkdir -p /root/.openclaw/skills/odsh-interop
+cp skills/odsh-interop/SKILL.md /root/.openclaw/skills/odsh-interop/SKILL.md
+#    详见 skills/odsh-interop/README.md
 ```
 
 ---
@@ -130,10 +148,16 @@ node src/bridge-daemon.mjs --notify --interval-ms 5000
 
 ```
 plugin-release/
-├── README.md                  本文档
+├── README.md                  本文档（英文）
+├── README.zh.md               中文对照版
+├── AUTHORS.md                 维护者 / 贡献者
+├── CHANGELOG.md               版本历史（Keep a Changelog）
+├── MAINTENANCE.md             已验证的故障排查笔记
 ├── docs/
 │   ├── PROTOCOL.md            网关握手/帧/方法/错误/幂等
 │   └── BRIDGE-SPEC.md         桥四区 / 信封 schema / 状态机 / 原子写
+├── skills/
+│   └── odsh-interop/          OpenClaw 侧技能（SKILL.md + 安装 README）
 ├── src/
 │   ├── env.mjs                .env 加载（零依赖）
 │   ├── gateway-client.mjs     公共 WS+配对模块（openSession/request/safeClose）

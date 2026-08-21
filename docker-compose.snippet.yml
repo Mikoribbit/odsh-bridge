@@ -34,6 +34,10 @@ services:
     image: your-openclaw-image:latest       # ⚠️ replace with your OpenClaw image
     container_name: openclaw
     networks: [agent-mesh]
+    # UID/GID alignment (⚠️ WSL2 cross-mount footgun):
+    # if one container runs as root and the other as a non-root user, shared-bridge writes can hit EACCES.
+    # Align them explicitly, e.g. user: "${UID}:${GID}" on both services, or chmod -R 770 the host bridge dir once.
+    # user: "${UID}:${GID}"
     volumes:
       - ${ODSH_BRIDGE_HOST_DIR:-H:/ODSH-bridge}:/root/ODSH-bridge
     # gateway listens on 18789; origin allowlist see docs/PROTOCOL.md 2.1 (allowedOrigins must list

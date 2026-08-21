@@ -189,7 +189,8 @@ plugin-release/
 │   ├── oc-invoke.mjs          Generic gateway method invocation CLI
 │   ├── oc-send.mjs            Discord message CLI (tools.invoke message)
 │   ├── oc-client.mjs          Long-connection / pairing-wait CLI (connect / node <method>)
-│   └── bridge-daemon.mjs      Bridge daemon (watch envelopes → execute → write back → notify)
+│   ├── bridge-daemon.mjs      Bridge daemon (watch envelopes → execute → write back → notify)
+│   └── bridge-cleanup.mjs     Retention cleanup (delete stale Input/Output files)
 ├── config/
 │   ├── odsh-bridge.ts         Cordis plugin orchestration (method B)
 │   └── cordis.yml             Merge-snippet example

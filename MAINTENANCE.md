@@ -97,10 +97,35 @@
 ## Release / version workflow (verified, used for v1.0.0)
 
 1. Edit code/docs in the working copy.
-2. `npm run check` (syntax-checks all 6 `.mjs`).
+2. `npm run check` (syntax-checks all `.mjs`).
 3. Update `CHANGELOG.md` (Keep a Changelog format).
 4. Commit, tag: `git tag v1.0.x` and `git push origin v1.0.x`.
 5. Keep `README.md` (EN) and `README.zh.md` (ZH) in structural parity.
+
+## 7. Cross-mount permission mismatch (UID/GID) — WSL2 footgun
+
+- **Symptom**: both containers share the bridge, but one side gets `EACCES` /
+  permission-denied when writing into `Input/` or `Output/`, even though the
+  other side writes fine.
+- **Cause**: on WSL2-hosted docker (or any cross-host mount), if the two
+  containers run as **different users** (e.g. one `root`, one `node`/non-root),
+  the file ownership/umask written by one side blocks the other.
+- **Fix (verified)**: align the users explicitly — add `user: "${UID}:${GID}"`
+  to **both** services in `docker-compose.snippet.yml`, or once on the host run
+  `chmod -R 770 /path/to/H:/ODSH-bridge` so both users can write. In our verified
+  environment both containers run as root (0:0), which is why it worked out of
+  the box; plan for this if you switch to non-root.
+
+## 8. Bridge retention — stale files accumulate
+
+- **Symptom**: `Input/` and `Output/` accumulate old envelopes/results over time.
+- **Fix**: run the bundled cleanup tool (`src/bridge-cleanup.mjs`) on a schedule
+  (e.g. cron) — it removes files older than N days (default 7) while protecting
+  `.state`, `README.md`, and dotfiles:
+  ```bash
+  node src/bridge-cleanup.mjs --days 7          # real delete
+  node src/bridge-cleanup.mjs --days 7 --dry-run # preview
+  ```
 
 ## Environment facts (reference only)
 

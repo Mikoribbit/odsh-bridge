@@ -13,8 +13,8 @@ when_to_use: for every incoming operator request, decide whether to handle it yo
 - **OpenClaw (you) = brain / persona**: conversation, memory, dreaming, decisions,
   final judgement, and the **task router**.
 - **DSH (DeepSeek Harness) = execution layer**: external/cross-application work —
-  tools, code, retrieval, file/batch processing, and (only if the operator enables
-  it) Windows node actions.
+  tools, code, retrieval, file/batch processing, and (if the operator enables the
+  Cua channel, see docs/CUA-EXECUTION.md) Windows desktop actions.
 - **Human operator = final arbiter** for anything uncertain.
 
 ## Task Routing Decision (do this for EVERY incoming request)
@@ -52,17 +52,18 @@ DSH** and pick the smaller side:
   do it yourself unless DSH has an obvious advantage (filesystem-heavy, headless
   batch, external network work, more separate systems).
 
-### Step 3 — capability check (DSH defaults are limited)
+### Step 3 — capability check (DSH can execute on the Windows host)
 
-`standard` DSH by default has **no Windows node capability** (windows-node/browser/
-screen/camera are only usable if the operator manually enables them). So:
+`standard` DSH can execute **Windows desktop tasks via Cua Driver** (see
+`docs/CUA-EXECUTION.md`): real screenshot, browser automation (CDP), click/type/
+hotkey, app launch — focus-safe, over SSH to the host. So:
 
-- For **non-Windows-node** tasks (files, code, fetch, batch, containers, data
-  wrangling): DSH fully available — relay when weight/cost favours it.
-- For **Windows-node** tasks (browser UI automation, screen, camera, Windows
-  desktop actions): do **not** assume DSH can do it; only relay if the operator
-  has confirmed the node is enabled; otherwise answer that it needs the operator
-  to enable the node first.
+- For **files / code / fetch / batch / containers / data wrangling**: DSH fully
+  available — relay when weight/cost favours it.
+- For **Windows desktop tasks** (browser UI automation, screen, desktop actions):
+  DSH can do them **if the Cua channel is enabled** (operator has installed Cua
+  Driver + OpenSSH on the host and whitelisted DSH's key). Relay to DSH when
+  enabled; otherwise tell the operator the Cua channel must be enabled first.
 
 ### Step 4 — never relay these to DSH
 
@@ -139,7 +140,7 @@ screen/camera are only usable if the operator manually enables them). So:
 | "download this page and extract the tables" | heavy | DSH | network + file + parsing, would bloat your window |
 | "run this analysis over 40 CSV files and give me the totals" | heavy | DSH | batch file work, DSH context stays clean |
 | "search X for posts about LLM agents" | light-heavy | yourself (one web call) or DSH if multiple iterations | compare: one search = you; multi-iteration crawl = DSH |
-| "open the browser, log into the dashboard, take a receipt" | windows-node | ask operator to enable node first | default standard DSH lacks node amples |
+| "open the browser, log into the dashboard, take a receipt" | heavy (windows desktop) | relay to DSH when the Cua channel is enabled | real desktop execution via Cua Driver |
 
 ## Setup (once)
 

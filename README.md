@@ -13,11 +13,12 @@
 </div>
 
 > **One-line positioning**: lets DeepSeek Harness (DSH, the execution layer) reach the OpenClaw (brain/persona layer)
-> gateway over WebSocket, and hand off tasks reliably between the two containers through a shared directory bridge
-> (envelope + daemon).
->
-> Everything here comes from a real integration that was run and verified in 2026-08 on the docker `agent-mesh`
-> network; anything not verified or speculative is marked `⚠️ verify yourself`.
+> gateway over WebSocket, hand off tasks reliably between the two containers through a shared directory bridge
+> (envelope + daemon), and — since **v1.1** — operate a **real Windows desktop** on the host machine via
+> **SSH + [Cua Driver](https://github.com/trycua/cua)** (no OpenClaw Desktop, no dedicated node daemon).
+
+> Everything here comes from a real integration that was run and verified in 2026-08 on the docker
+> `agent-mesh` network; anything not verified or speculative is marked `⚠️ verify yourself`.
 > All credentials are placeholders — no real token/secret should ever appear in this repository.
 
 ---
@@ -29,11 +30,12 @@
 - [3. Quick start](#3-quick-start)
 - [4. Configuration (.env fields)](#4-configuration-env-fields)
 - [5. Directory structure](#5-directory-structure)
-- [6. Two integration approaches](#6-two-integration-approaches)
-- [7. Security notes](#7-security-notes)
-- [8. Troubleshooting (common failures)](#8-troubleshooting-common-failures)
-- [9. Roadmap](#9-roadmap-not-implemented--not-verified--all-marked-️)
-- [10. Related links](#10-related-links)
+- [6. Integration approaches](#6-integration-approaches)
+- [7. Windows desktop execution (Cua Driver)](#7-windows-desktop-execution-cua-driver)
+- [8. Security notes](#8-security-notes)
+- [9. Troubleshooting (common failures)](#9-troubleshooting-common-failures)
+- [10. Roadmap](#10-roadmap)
+- [11. Credits](#11-credits)
 - [Maintenance notes](MAINTENANCE.md)
 
 ---
@@ -41,20 +43,22 @@
 ## 1. Architecture (text version)
 
 ```
-┌────────────────────────────── agent-mesh (docker network) ──────────────────────────────┐
-│                                                                                         │
-│   deepseek-harness (DSH)                        openclaw (OpenClaw)             │
+┌────────────────────────────── agent-mesh (docker network) ────────────────────────────────┐
+│                                                                                           │
+│   deepseek-harness (DSH)                        openclaw (OpenClaw)                │
 │   ├─ oc-invoke.mjs  ──┐                                                                    │
-│   ├─ oc-send.mjs   ───┼── WebSocket(:18789) ─────▶  gateway (Device Pairing +           │
-│   ├─ oc-client.mjs ───┘   explicit Origin / Ed25519    JSON-RPC-style methods)           │
+│   ├─ oc-send.mjs   ───┼── WebSocket(:18789) ─────▶ gateway (Device Pairing +          │
+│   ├─ oc-client.mjs ───┘   explicit Origin / Ed25519   JSON-RPC-style methods)           │
 │   │                      signed pairing / tools.invoke ├─ agents.list / status            │
-│   └─ bridge-daemon.mjs                                ├─ doctor.memory.* (dreaming)       │
+│   └─ bridge-daemon.mjs                                ├─ doctor.memory.* (dreaming)      │
 │         │                                             └─ message (Discord send/recv)      │
-│         └── shared bridge mount: Input/ Output/ DSH-Workspace/ Openclaw-Workspace/  (envelope)│
-└──────────────────────────────────────────────────────────────────────────────────────────┘
+│   └─ oc-cua.mjs ─── SSH(:22, ed25519) ──────────────▶ Windows host                     │
+│         │                                             └─ Cua Driver (cua-driver serve)    │
+│         └── shared bridge mount: Input/ Output/ DSH-Workspace/ Openclaw-Workspace/         │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-There are two data flows:
+There are three data flows:
 
 1. **Realtime channel**: A DSH script connects to the OpenClaw gateway on 18789 as a "paired device"
    (HTTP Upgrade + origin allowlist + Ed25519 signature pairing + `connect.challenge` → `hello-ok`),
@@ -62,6 +66,9 @@ There are two data flows:
 2. **Async bridge**: Either side writes a task envelope to `Input/T-*.json` → the daemon watches and
    executes it → atomically writes back `Output/<taskId>_result.json`, optionally notifying a Discord
    channel via `oc-send`.
+3. **Windows desktop execution (v1.1+)**: DSH calls `oc-cua.mjs` → `ssh` into the Windows host →
+   invokes `cua-driver call <tool> '<json>'` → the driver operates the real desktop (snapshot,
+   click/type/hotkey, browser via CDP, app launch) **without stealing focus**.
 
 ---
 
@@ -73,33 +80,23 @@ There are two data flows:
   `connect.challenge` (nonce) → sign the `v2` claim string → `connect` → `hello-ok`; the device is
   approved through the Control UI (operator role + 5 scopes). `deviceId = hex(SHA-256(Ed25519 public
   key))` stays constant, so a device approved once stays approved forever. **Known pitfall fixed**: the
-  claim and `device.signedAt` must come from the same `Date.now()` call (a millisecond mismatch
-  intermittently raises `device signature invalid`, see docs/PROTOCOL.md §2.3).
-- ✅ **Gateway method calls**: `agents.list`, `status`, `doctor.memory.status` (dreaming memory system),
-  `crestodian.chat`.
-- ✅ **Discord messages (via tools.invoke)**: the `message` tool with `action=send` posts a message
-  (`reply.ok && payload.ok` means DELIVERED); `action=read` reads channel history — the args
-  `{action:"read",channel:"discord",to:"channel:<id>"}` were verified (returns the full message list,
-  verified 2026-08-20).
-- ✅ **Bridge four zones + envelope protocol**: `Input/` task entry, `Output/` result exit, and the two
-  per-side private zones `DSH-Workspace/` / `Openclaw-Workspace/`; envelope schema `odsh-envelope/v1`,
-  state machine `queued→running→done|failed|cancelled`, `odsh-result/v1` result files.
-- ✅ **Daemon**: `bridge-daemon.mjs` watches `Input/T-*.json` → executes per `payload.kind`
-  (echo / notify / run-command / write-file / read-file / bridge-status) → atomic write
-  (`.tmp`→rename) → optional `oc-send` channel notification; idempotent per `taskId`.
-- ✅ **DNS addressing**: default `OC_HOST=openclaw` container name + dynamically built origin, so a
-  container restart or IP swap needs no config change (in the verify environment the two container IPs
-  actually swapped).
-- ✅ **Identity persistence**: the Ed25519 JWK is stored at the bridge `DSH-Workspace/openclaw-device.json`
-  (generated on first run, reused afterwards, constant `deviceId`), file mode 0600.
+  claim and `device.signedAt` must come from the same `Date.now()` call (see docs/PROTOCOL.md §2.3).
+- ✅ **Gateway method calls**: `agents.list`, `status`, `health`, `talk.catalog`,
+  `talk.session.create`, `tools.invoke` (message send/read), `config.schema.lookup` — all pass.
+- ✅ **Async bridge**: envelope → daemon → result, with `.tmp → rename` atomic writes and an idempotent
+  `.state` store; kinds `echo / notify / run-command / write-file / read-file / bridge-status`.
+- ✅ **Windows desktop execution via Cua Driver (v1.1)**: verified from the DSH container over SSH:
+  - `cua-driver --version` → 0.21.0
+  - `get_screen_size` → real host resolution (e.g. 2560×1440)
+  - `get_accessibility_tree` → live desktop process tree via UIA
+  - full tool surface: `get_desktop_state`, `browser_navigate/click/type/pointer`, `launch_app`,
+    `kill_app`, `click/double_click/right_click/hotkey/type/scroll`, `list_apps`, `list_windows` …
 
 ---
 
 ## 3. Quick start
 
-### 3.0 Get the project (no release yet — clone or download)
-
-There is no packaged release yet; get the code from this repository:
+### 3.0 Get the project
 
 ```bash
 git clone https://github.com/Mikoribbit/odsh-bridge.git
@@ -107,13 +104,10 @@ cd odsh-bridge
 # zero dependencies — nothing to install; `.env` is auto-loaded by `src/env.mjs`
 ```
 
-Or download the ZIP from the green **Code ▾ → Download ZIP** button on GitHub
-and unpack it.
+### Prerequisites (environment prep, verified)
 
-### Prerequisites (environment prep, all verified in the real environment)
-
-- Both containers are on the same docker network (this project's example name is `agent-mesh`), named
-  `deepseek-harness` and `openclaw`; **both must be able to ping the other container's name**.
+- Both containers on the same docker network (this repo's example name is `agent-mesh`), named
+  `deepseek-harness` and `openclaw`; both must be able to ping the other container's name.
 - The shared bridge is mounted at the same absolute path inside both containers (default
   `/root/ODSH-bridge`; host `H:/ODSH-bridge`, see `docker-compose.snippet.yml`).
 - The OpenClaw gateway side is opened up (see `docs/PROTOCOL.md` §2.1):
@@ -122,29 +116,58 @@ and unpack it.
     (back it up first) and restart the gateway for it to take effect.
   - (Optional) add `172.18.0.0/16` to `autoApproveCidrs` to skip per-device approval.
 
-### Deployment steps (3 steps + 1 approval)
+### Deployment steps (bridge core, 3 steps + 1 approval)
 
 ```bash
 # 1. Configure the environment (inside the DSH container, repo root)
 cp .env.example .env
-#   edit .env: set OC_TOKEN=<the value of openclaw.json → gateway.auth.token>; fill DISCORD_CHANNEL_ID etc. as needed
+#   edit .env: set OC_TOKEN=<the value of openclaw.json → gateway.auth.token>; fill DISCORD etc. as needed
 
 # 2. Pair + connection test
 node src/oc-client.mjs connect
-#   on first run it prints "device not approved"; approve that deviceId in the OpenClaw Control UI and it connects and stays
+#   first run prints "device not approved"; approve that deviceId in the OpenClaw Control UI
 
-# 3a. Deploy the daemon (all kinds see docs/BRIDGE-SPEC.md §6; single pass with --once)
+# 3a. Deploy the daemon
 node src/bridge-daemon.mjs --notify --interval-ms 5000
-# 3b. Otherwise invoke the gateway manually
-#   node src/oc-invoke.mjs agents.list '{}'   # generic method
-#   node src/oc-send.mjs "hello" --channel <id> # send a Discord message
+# 3b. Or invoke the gateway manually
+#   node src/oc-invoke.mjs agents.list '{}'
+#   node src/oc-send.mjs "hello" --channel <id>
 
-# 4. Install the OpenClaw-side skill (without it, OpenClaw doesn't know how to cooperate)
+# 4. Install the OpenClaw-side skill (so OpenClaw knows how to cooperate)
 #    on the OpenClaw container:
 mkdir -p /root/.openclaw/skills/odsh-interop
 cp skills/odsh-interop/SKILL.md /root/.openclaw/skills/odsh-interop/SKILL.md
-#    see skills/odsh-interop/README.md for details
 ```
+
+### Enable Windows desktop execution (v1.1, optional)
+
+> Full guide: `docs/CUA-EXECUTION.md`. Summary:
+
+```powershell
+# A. On the Windows host
+irm https://cua.ai/driver/install.ps1 | iex            # install Cua Driver
+#   Settings → Optional features → install "OpenSSH Server"
+#   (GUI install avoids Add-WindowsCapability CBS errors)
+Start-Service sshd; Set-Service sshd -StartupType Automatic
+#   if Start-Service fails but `sshd -d` works, use the scheduled-task fallback:
+schtasks /create /tn "sshd-keepalive" /tr "C:\Windows\System32\OpenSSH\sshd.exe" /sc onlogon /ru SYSTEM /rl HIGHEST /f
+Start-Process -WindowStyle Hidden C:\Windows\System32\OpenSSH\sshd.exe
+#   put the DSH public key into (Administrators users only):
+#   C:/ProgramData/ssh/administrators_authorized_keys
+```
+
+```bash
+# B. On the DSH container
+apt-get install -y openssh-client
+ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 -C "dsh-bridge-cua"
+cat /root/.ssh/id_ed25519.pub   # → paste to the Windows file above
+
+# Verify
+ssh -i /root/.ssh/id_ed25519 miko@host.docker.internal whoami
+node src/oc-cua.mjs get_screen_size
+```
+
+> The bridge core works without this optional step; the Cua channel only unlocks real desktop control.
 
 ---
 
@@ -166,6 +189,12 @@ cp skills/odsh-interop/SKILL.md /root/.openclaw/skills/odsh-interop/SKILL.md
 | `BRIDGE_RUN_TIMEOUT_MS` | `15000` | `run-command` timeout |
 | `BRIDGE_ALLOW_ABS_PATHS` | `false` | Whether write/read-file may use absolute paths (secure default false) |
 | `OC_SEND_SCRIPT` | `src/oc-send.mjs` | Path to the send script used for notifications |
+| `CUA_SSH_USER` | `miko` | Windows username for the Cua channel |
+| `CUA_SSH_HOST` | `host.docker.internal` | Windows host reachable from the container |
+| `CUA_SSH_PORT` | `22` | Windows SSH port |
+| `CUA_SSH_KEY` | `/root/.ssh/id_ed25519` | SSH private key |
+| `CUA_BIN` | `C:/Users/<user>/AppData/Local/Programs/Cua/cua-driver/bin/cua-driver.exe` | Windows cua-driver path |
+| `CUA_TIMEOUT_MS` | `60000` | Per-call timeout |
 
 ---
 
@@ -174,115 +203,117 @@ cp skills/odsh-interop/SKILL.md /root/.openclaw/skills/odsh-interop/SKILL.md
 ```
 plugin-release/
 ├── README.md                  This document (EN)
-├── README.zh.md               Chinese version (this document, zh)
+├── README.zh.md               Chinese version
 ├── AUTHORS.md                 Maintainer / contributors
 ├── CHANGELOG.md               Version history (Keep a Changelog)
 ├── MAINTENANCE.md             Verified troubleshooting notes
 ├── docs/
 │   ├── PROTOCOL.md            Gateway handshake / frames / methods / errors / idempotency
-│   └── BRIDGE-SPEC.md         Bridge four zones / envelope schema / state machine / atomic write
+│   ├── BRIDGE-SPEC.md         Bridge four zones / envelope schema / state machine / atomic write
+│   └── CUA-EXECUTION.md       Windows desktop execution via Cua Driver (install/authorize/use)
 ├── skills/
 │   └── odsh-interop/          OpenClaw-side skill (SKILL.md + install README)
 ├── src/
-│   ├── env.mjs                .env loading (zero dependencies)
-│   ├── gateway-client.mjs     Shared WS+pairing module (openSession/request/safeClose)
-│   ├── oc-invoke.mjs          Generic gateway method invocation CLI
-│   ├── oc-send.mjs            Discord message CLI (tools.invoke message)
-│   ├── oc-client.mjs          Long-connection / pairing-wait CLI (connect / node <method>)
-│   ├── bridge-daemon.mjs      Bridge daemon (watch envelopes → execute → write back → notify)
-│   └── bridge-cleanup.mjs     Retention cleanup (delete stale Input/Output files)
-├── config/
-│   ├── odsh-bridge.ts         Cordis plugin orchestration (method B)
-│   └── cordis.yml             Merge-snippet example
-├── docker-compose.snippet.yml Bridge mount + agent-mesh network snippet
-├── package.json               Metadata + bin + npm run check
-├── .env.example               Config sample (all placeholders)
-├── LICENSE                    MIT
-└── CONTRIBUTING.md            Local reproduction / adding kinds / testing
+│   ├── env.mjs                .env loader
+│   ├── gateway-client.mjs     Shared WS/Ed25519 pairing client
+│   ├── oc-invoke.mjs          Invoke any gateway method
+│   ├── oc-send.mjs            Send a message via gateway
+│   ├── oc-client.mjs          Pairing wait / long-lived client
+│   ├── oc-cua.mjs             (v1.1) SSH + Cua Driver desktop execution
+│   ├── bridge-daemon.mjs      Envelope watcher/executor
+│   └── bridge-cleanup.mjs     Retention cleanup tool
+├── config/                    Cordis plugin form (⚠️ optional, not product-verified)
+├── .env.example               Env template (all placeholders)
+└── LICENSE  ·  package.json  ·  docker-compose.snippet.yml
 ```
 
 ---
 
-## 6. Two integration approaches
+## 6. Integration approaches
 
-### A. Standalone node CLI / daemon (recommended, verified form)
+### A. Standalone CLI / daemon (recommended, verified form)
 
 - Zero build, zero npm dependencies, run `node src/xxx.mjs` directly; `.env` is auto-loaded by `src/env.mjs`.
-- Connections always close through `safeClose()` (`gateway-client.mjs`): the newer `node:net` ESM Socket has
-  only `destroy()/resetAndDestroy()`, no `.close()`; the compatibility layer prefers `.close()` →
-  `.destroy()` → `.resetAndDestroy()`, and all call sites have been updated (do not call `sock.close()`
-  directly in new code).
+- Connections always close through `safeClose()` (`gateway-client.mjs`): the newer `node:net` ESM Socket
+  has only `destroy()/resetAndDestroy()`, no `.close()`; see comments in `gateway-client.mjs`.
 - Daemon runs as a long-lived process: `node src/bridge-daemon.mjs --notify --interval-ms 5000`
   (manage with systemd/supervisor).
-- All scripts in this repo ship in this form; they are decoupled from your existing DSH main process and
-  do not block each other.
 
 ### B. Mounted into DSH as a Cordis plugin (⚠️ not tested in the product environment)
 
-- DSH is Cordis-based: `config/odsh-bridge.ts` uses an `export function apply(ctx, config)` shape and, inside
-  `ctx.effect()`, spawns `bridge-daemon.mjs` as a child process, reclaiming it with SIGTERM on unload/hot-reload —
-  consistent with the official cordis-tutorial (02-lifecycle-and-effects.md) principles.
-- `config/cordis.yml` is an `insert:` merge snippet (same syntax as DSH `examples/mcp-memory/*.cordis.yml`)
-  that hooks the daemon into the root `cordis.yml` as a plugin entry:
-  - Pros: hosted with the DSH lifecycle, hot-reload can reclaim the child process;
-  - Note: the script still runs as an independent process, only its lifecycle is managed by Cordis;
-  - ⚠️ this mount path was not tested in the product environment — get method A working first, then switch.
+- `config/odsh-bridge.ts`: `export function apply(ctx, config)` shape, spawns `bridge-daemon.mjs`
+  inside `ctx.effect()`, reclaiming with SIGTERM on unload/hot-reload (consistent with the official Cordis
+  tutorial). `config/cordis.yml` is an `insert:` merge snippet.
+- ⚠️ this mount path was not tested in the product environment — get method A working first, then switch.
 
 ---
 
-## 7. Security notes
+## 7. Windows desktop execution (Cua Driver)
+
+See **`docs/CUA-EXECUTION.md`** for the full guide. Summary:
+
+- **Why**: gives the DSH execution layer real, focus-safe desktop control on the Windows host —
+  screenshot, click/type, browser automation (CDP), app launch — without any OpenClaw Desktop or a
+  dedicated node process.
+- **How it works**: `src/oc-cua.mjs` runs `ssh -i <key> <user>@<host> "cua-driver call <tool> '<json>'"`.
+- **Security posture**: SSH is key-only (`BatchMode=yes`), the Windows side whitelists exactly the DSH
+  container's public key; the driver operates the real desktop but never steals focus.
+
+---
+
+## 8. Security notes
 
 1. **Never commit tokens**: `OC_TOKEN` lives only in `.env` (gitignored); everything in the repo's
    `.env.example` is a placeholder.
 2. **Device pairing**: `deviceId` is a device fingerprint (a hash of the Ed25519 public key); approving it
-   grants operator-level permissions (including `operator.admin`/`approvals`/`pairing`) — make sure your
-   network is isolated and do not approve unknown devices casually.
+   grants operator-level permissions — make sure your network is isolated and do not approve unknown devices
+   casually.
 3. **Origin allowlist**: broad openings lower security; in production only allow the origin you actually use;
-   changing the allowlist requires a gateway restart to take effect.
+   changing the allowlist requires a gateway restart.
 4. **Private key permissions**: the JWK file is created `0600` and lives in DSH-Workspace (the other container
    must not modify it).
-5. **run-command**: the daemon's `run-command` can execute shell (verbatim check: the first word may not start
-   with `;`, `&`, `|`, or a backtick) — only trust envelope sources; in production add a requester
+5. **run-command**: the daemon's `run-command` can execute shell (verbatim check: the first word may not
+   start with `;`, `&`, `|`, or a backtick) — only trust envelope sources; in production add a requester
    allowlist (see BRIDGE-SPEC §8).
+6. **Cua channel**: SSH key is limited to the DSH identity; keep `CUA_SSH_*` in controlled env vars (never
+   commit). Revoke the key immediately if the Windows host or container is compromised.
 
 ---
 
-## 8. Troubleshooting (common failures)
+## 9. Troubleshooting (common failures)
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `spawn <script> ENOENT` | The command/environment is missing when the script is launched through DSH's tool-runner exec channel | Use a long-lived session (`oc-client connect`) + start the daemon from a manual shell; or give the full node path (`which node`). ⚠️ this problem exists in the verify environment; verify your DSH runner config. |
-| `ECONNREFUSED / ENOTFOUND` | Cannot reach the gateway | Check that both containers are on the same docker network and the container name is correct (`docker exec openclaw getent hosts openclaw`) |
-| `handshake rejected / non-101` | origin not allowed | Add the origin you use to `gateway.controlUi.allowedOrigins` and restart the gateway (back up openclaw.json first) |
-| Connection breaks after container IP swap | An IP was hardcoded | Use container-name DNS everywhere (default `OC_HOST=openclaw`); no reconfiguration needed after restart |
-| `device signature invalid` (intermittent, looks random) | **Confirmed root cause (verified by controlled-variable experiment)**: the claim signature timestamp and `device.signedAt` used two separate `Date.now()` calls → millisecond mismatch → the gateway rebuilds the claim from `signedAt` to verify the signature and necessarily fails, only occasionally passing when both land in the same millisecond | If you hit this error, **first check whether there are two timestamps**: take a single `const signedAt = Date.now()` and use it for both the claim and `device.signedAt` (see the current implementation in `src/gateway-client.mjs`; already fixed and passing 4/4 in a row — health/agents.list/status/oc-send all OK) |
-| `PAIRING_REQUIRED` | Device not approved | Approve that deviceId in the Control UI, then it reconnects automatically |
-| daemon does not process envelopes | Already processed (recorded in `.state`) / filename is not `T-*.json` | Clear `.state` or use a new taskId; check file permissions |
+| `spawn <script> ENOENT` | Command/environment missing when launched through DSH's tool-runner exec channel | Use a long-lived session (`oc-client connect`) + start the daemon from a manual shell; give the full node path (`which node`). ⚠️ verify your DSH runner config. |
+| `ECONNREFUSED / ENOTFOUND` | Cannot reach the gateway | Check both containers on the same docker network and the container name (`docker exec openclaw getent hosts openclaw`) |
+| `handshake rejected / non-101` | origin not allowed | Add the origin to `gateway.controlUi.allowedOrigins` and restart the gateway (back up openclaw.json first) |
+| Connection breaks after container IP swap | An IP was hardcoded | Use container-name DNS everywhere (default `OC_HOST=openclaw`) |
+| `device signature invalid` (intermittent) | **Confirmed root cause**: claim signature timestamp and `device.signedAt` used two separate `Date.now()` calls → millisecond mismatch | Use a single `const signedAt = Date.now()` for both (see `gateway-client.mjs`) |
+| `PAIRING_REQUIRED` | Device not approved | Approve that deviceId in the Control UI |
+| daemon does not process envelopes | Already processed (`.state`) / filename is not `T-*.json` | Clear `.state` or use a new taskId |
+| Cua: `Connection refused` on 22 | sshd not running (service-manager start fails) | Use `sshd.exe -d` debug-check; if that works, use the scheduled-task fallback (see docs/CUA-EXECUTION.md §1.2) |
+| Cua: `Permission denied (publickey)` | Key not in `administrators_authorized_keys` (Administrators user) | Put the DSH pubkey there with `icacls ... Administrators:F`; see docs/CUA-EXECUTION.md §1.4 |
+| Cua: `cua-driver: not recognized` or wrong path | PATH / install location differs | Set `CUA_BIN` to the real full path of `cua-driver.exe` |
 
 ---
 
-## 9. Roadmap (not implemented / not verified → all marked ⚠️)
+## 10. Roadmap
 
-- **F-1** Windows Node execution node (`target: windows-node`) bridging: the envelope `target` is reserved
-  but the executor is not implemented ⚠️.
-- **F-2** ~~Completing the read direction~~ **verified working**: the `message` tool's `action=read` args
-  form is `{action:"read",channel:"discord",to:"channel:<id>"}`, and `tools.invoke` can return the full
-  channel history (verified 2026-08-20).
-- **F-3** ~~Stable handling of gateway anti-replay / signature invalid~~ **resolved**: the root cause was the
-  claim and `device.signedAt` using two separate `Date.now()` calls (millisecond mismatch); unified to a
-  single `signedAt` and verified passing 4/4; the remaining optional item is an automatic retry policy
-  (low priority).
-- **F-4** A switch to enable the daemon's `requester` allowlist (production hardening) ⚠️.
-- **F-5** Persistent subscription to gateway events (`caps:["tool-events"]`) — the `event` frames during the
-  connect phase are currently ignored ⚠️.
+- **F-2 (done)** `message` tool read direction verified: `{action:"read",channel:"discord",to:"channel:<id>"}`.
+- **F-3 (done)** Gateway anti-replay / signature-invalid root cause fixed (single `signedAt`).
+- **F-4** Daemon `requester` allowlist (production hardening) ⚠️.
+- **F-5** Persistent subscription to gateway events (`caps:["tool-events"]`) ⚠️.
+- **F-6** Cua channel hardening: capability manifest (`--permission-mode bounded`) + per-app allowlist ⚠️.
+- **F-7** Envelope `target: windows-node` kept reserved but unused; the Cua channel is the supported desktop path.
 
 ---
 
-## 10. Related links
+## 11. Credits
 
-- DSH: `/app/docs/cordis-tutorial/` (plugin form), DSH examples/mcp-memory (cordis.yml merge syntax)
-- GitHub topic: `dsh-plugin` (add this topic after publishing this repo)
-- Protocol details: `docs/PROTOCOL.md` · Bridge spec: `docs/BRIDGE-SPEC.md`
+- **Cua** — this project's Windows desktop execution layer is powered by
+  [Cua Driver](https://github.com/trycua/cua) (by the trycua team). Huge thanks for an open, cross-platform,
+  focus-safe computer-use driver that lets agents drive desktop apps without stealing the user's cursor.
+  The Cua Driver is independently licensed by its authors — see their repository for details.
 
 ---
 

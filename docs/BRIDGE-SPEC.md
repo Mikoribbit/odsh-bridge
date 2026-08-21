@@ -23,7 +23,7 @@ Both containers mount it to the same host directory (verified environment: host 
   "type": "execute | query | notify | bridge-status | interop",
   "status": "queued",
   "requester": "dsh | openclaw | human",
-  "target": "dsh | openclaw | windows-node | both",
+  "target": "dsh | openclaw | both",   // (windows-node kept reserved in daemon for back-compat; desktop execution goes through the Cua channel, see docs/CUA-EXECUTION.md)
   "createdMs": 1787249900000,
   "expiresMs": 1787336000000,
   "payload": { "kind": "echo", "text": "..." },

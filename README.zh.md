@@ -12,114 +12,159 @@
 
 </div>
 
-> 本文为英文 README.md 的中文对照版。
+> **一句话定位**：让 DeepSeek Harness（DSH，执行层）通过 WebSocket 连接 OpenClaw（大脑/人格层）网关，
+> 借助共享目录桥（信封 + 守护进程）在两侧容器间可靠交接任务；**自 v1.1 起**，还能通过
+> **SSH + [Cua Driver](https://github.com/trycua/cua)** 操作**宿主机上的真实 Windows 桌面**
+> （截图 / 点击 / 浏览器 / 系统操作，不偷焦点；无需 OpenClaw Desktop，也无需专用节点守护进程）。
 
-> **一句话定位**：让 DeepSeek Harness（DSH，执行层）通过 WebSocket 接入 OpenClaw（大脑/人格层）的网关，
-> 并用一个共享目录桥（信封 + 守护进程）完成两个容器之间的可靠任务交接。
->
-> 所有能力均来自 2026-08 在 docker `agent-mesh` 网络上的真实集成并跑通验证；未验证/推测项一律标注 `⚠️ 需自行验证`。
-> 认证信息全部为占位符——任何真实 token/密钥都不应出现在此仓库。
+> 本仓库全部内容来自 2026-08 在 docker `agent-mesh` 网络上**真实跑通并验证**的集成；
+> 未验证或猜测的内容一律标注 `⚠️ 请自行验证`。
+> 所有凭据均为占位符——仓库中**绝不出现真实 token/密钥**。
 
 ---
 
 ## 目录
 
 - [1. 架构（文字版）](#1-架构文字版)
-- [2. 已验证特性](#2-已验证特性)
+- [2. 已验证能力](#2-已验证能力)
 - [3. 快速开始](#3-快速开始)
 - [4. 配置（.env 字段）](#4-配置env-字段)
 - [5. 目录结构](#5-目录结构)
-- [6. 两种集成方式](#6-两种集成方式)
-- [7. 安全注意事项](#7-安全注意事项)
-- [8. 常见故障排查](#8-常见故障排查)
-- [9. Roadmap（未实现/未验证 → 全部标注 ⚠️）](#9-roadmap未实现--未验证--全部标注-️)
-- [10. 相关链接](#10-相关链接)
-- [维护笔记](MAINTENANCE.md)
+- [6. 集成方式](#6-集成方式)
+- [7. Windows 桌面执行（Cua Driver）](#7-windows-桌面执行cua-driver)
+- [8. 安全说明](#8-安全说明)
+- [9. 常见故障排查](#9-常见故障排查)
+- [10. 路线图](#10-路线图)
+- [11. 致谢](#11-致谢)
+- [维护说明](MAINTENANCE.md)
 
 ---
 
 ## 1. 架构（文字版）
 
 ```
-┌────────────────────────────── agent-mesh (docker network) ──────────────────────────────┐
-│                                                                                         │
-│   deepseek-harness (DSH)                        openclaw (OpenClaw)             │
+┌────────────────────────────── agent-mesh（docker 网络）─────────────────────────────────┐
+│                                                                                           │
+│   deepseek-harness (DSH)                        openclaw (OpenClaw)                │
 │   ├─ oc-invoke.mjs  ──┐                                                                    │
-│   ├─ oc-send.mjs   ───┼── WebSocket(:18789) ─────▶  gateway（Device Pairing +            │
-│   ├─ oc-client.mjs ───┘   显式 Origin / Ed25519       JSON-RPC 风格方法）                │
-│   │                     签名配对 / tools.invoke      ├─ agents.list / status              │
-│   └─ bridge-daemon.mjs                              ├─ doctor.memory.*（dreaming 记忆）   │
-│         │                                           └─ message（Discord 频道收发）        │
-│         └── 共享桥挂载：Input/ Output/ DSH-Workspace/ Openclaw-Workspace/  （信封协议）     │
-└──────────────────────────────────────────────────────────────────────────────────────────┘
+│   ├─ oc-send.mjs   ───┼── WebSocket(:18789) ─────▶ 网关（设备配对 +                 │
+│   ├─ oc-client.mjs ───┘   显式 Origin / Ed25519 签名   JSON-RPC 风格方法）             │
+│   │                      配对 / tools.invoke         ├─ agents.list / status             │
+│   └─ bridge-daemon.mjs                                ├─ doctor.memory.*（dreaming）     │
+│         │                                             └─ message（Discord 收发）           │
+│   └─ oc-cua.mjs ─── SSH(:22, ed25519) ──────────────▶ Windows 宿主                   │
+│         │                                             └─ Cua Driver（cua-driver serve）  │
+│         └── 共享桥挂载：Input/ Output/ DSH-Workspace/ Openclaw-Workspace/                  │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-数据流两条：
+共有三条数据流：
 
-1. **实时通道**：DSH 脚本作为「已配对设备」连入 OpenClaw 网关 18789（HTTP Upgrade + origin 白名单 + Ed25519 签名配对 + `connect.challenge` → `hello-ok`），随后按 JSON-RPC 风格调用方法。
-2. **异步桥**：任一侧把任务写成 `Input/T-*.json` 信封 → daemon 监听执行 → `Output/<taskId>_result.json` 原子回写，可选经 `oc-send` 通知 Discord 频道。
+1. **实时通道**：DSH 脚本作为"配对设备"连接 18789 上的 OpenClaw 网关
+   （HTTP Upgrade + Origin 白名单 + Ed25519 签名配对 + `connect.challenge` → `hello-ok`），
+   再以 JSON-RPC 风格调用网关方法。
+2. **异步桥**：任一侧写入任务信封 `Input/T-*.json` → 守护进程监视并执行 → 原子写回
+   `Output/<taskId>_result.json`，可选经 `oc-send` 通知 Discord 频道。
+3. **Windows 桌面执行（v1.1+）**：DSH 调用 `oc-cua.mjs` → `ssh` 进入 Windows 宿主 →
+   执行 `cua-driver call <tool> '<json>'` → 驱动操作真实桌面（截图、点击/键入/热键、
+   浏览器 CDP、拉起应用），**全程不偷焦点**。
 
 ---
 
-## 2. 已验证特性
+## 2. 已验证能力
 
-> 以下每一项都是真实环境下实测跑通的。
+> 以下每一项都在真实环境中实际跑通并通过。
 
-- ✅ **网关 WebSocket 握手 + Ed25519 设备配对**：HTTP Upgrade（带显式 `Origin`）→ `connect.challenge`（nonce）→ `v2` claim 串签名 → `connect` → `hello-ok`；设备经 Control UI 批准（operator 角色 + 5 个 scope），`deviceId = hex(SHA-256(Ed25519 公钥))` 恒定，批准一次永久有效。**已知坑已修**：claim 与 `device.signedAt` 必须取同一次 `Date.now()`（毫秒不一致会偶发 `device signature invalid`，见 docs/PROTOCOL.md §2.3）。
-- ✅ **网关方法调用**：`agents.list`、`status`、`doctor.memory.status`（dreaming 记忆系统）、`crestodian.chat`。
-- ✅ **Discord 消息（经 tools.invoke）**：`message` 工具 `action=send` 发消息（`reply.ok && payload.ok` 判定 DELIVERED）；`action=read` 读频道历史——args `{action:"read",channel:"discord",to:"channel:<id>"}` 已实测（返回完整消息列表，2026-08-20 验证）。
-- ✅ **桥四区 + 信封协议**：`Input/` 任务入口、`Output/` 结果出口、`DSH-Workspace/` / `Openclaw-Workspace/` 双方私有区；信封 schema `odsh-envelope/v1`，状态机 `queued→running→done|failed|cancelled`，`odsh-result/v1` 结果文件。
-- ✅ **守护进程**：`bridge-daemon.mjs` watch `Input/T-*.json` → 按 `payload.kind` 执行（echo / notify / run-command / write-file / read-file / bridge-status）→ 原子写（`.tmp`→rename）→ 可选 `oc-send` 频道通知；按 `taskId` 幂等防重复处理。
-- ✅ **DNS 寻址**：默认 `OC_HOST=openclaw` 容器名 + origin 动态构造，容器重启/IP 对调无需改配置（验证环境实测双容器 IP 曾互换）。
-- ✅ **身份持久化**：Ed25519 JWK 存桥 `DSH-Workspace/openclaw-device.json`（首次生成、后续复用、deviceId 恒定），文件权限 0600。
+- ✅ **网关 WebSocket 握手 + Ed25519 设备配对**：HTTP Upgrade（显式 `Origin`）→
+  `connect.challenge`（nonce）→ 对 `v2` 认领串签名 → `connect` → `hello-ok`；
+  经控制台批准（operator 角色 + 5 scopes）。`deviceId = hex(SHA-256(Ed25519 公钥))` 恒定，
+  一次批准永久有效。**已知坑已修**：认领串与 `device.signedAt` 必须取自同一次 `Date.now()`
+  （见 docs/PROTOCOL.md §2.3）。
+- ✅ **网关方法调用**：`agents.list`、`status`、`health`、`talk.catalog`、
+  `talk.session.create`、`tools.invoke`（消息收发）、`config.schema.lookup` —— 全部通过。
+- ✅ **异步桥**：信封 → 守护进程 → 结果，`.tmp → rename` 原子写 + 幂等 `.state`；
+  kind 支持 `echo / notify / run-command / write-file / read-file / bridge-status`。
+- ✅ **Windows 桌面执行（v1.1，经 Cua Driver）**：从 DSH 容器经 SSH 实测：
+  - `cua-driver --version` → 0.21.0
+  - `get_screen_size` → 真实宿主分辨率（如 2560×1440）
+  - `get_accessibility_tree` → 经 UIA 读到真实桌面进程树
+  - 完整工具面：`get_desktop_state`、`browser_navigate/click/type/pointer`、`launch_app`、
+    `kill_app`、`click/double_click/right_click/hotkey/type/scroll`、`list_apps`、`list_windows` …
 
 ---
 
 ## 3. 快速开始
 
-### 3.0 获取项目（暂无 release——clone 或下载）
-
-尚未发布打包版；直接从本仓库获取代码：
+### 3.0 获取项目
 
 ```bash
 git clone https://github.com/Mikoribbit/odsh-bridge.git
 cd odsh-bridge
-# 零依赖：无需安装任何包；`.env` 由 `src/env.mjs` 自动加载
+# 零依赖——无需安装任何东西；`.env` 由 `src/env.mjs` 自动加载
 ```
 
-或用 GitHub 主页绿色 **Code ▾ → Download ZIP** 下载解压。
+### 前置条件（已验证）
 
-### 先决条件（环境准备，均在真实环境验证过）
+- 两个容器位于同一 docker 网络（本仓库示例名 `agent-mesh`），名字分别为
+  `deepseek-harness` 与 `openclaw`；两者都能 ping 到对方容器名。
+- 共享桥在两侧容器挂载到同一绝对路径（默认 `/root/ODSH-bridge`；宿主 `H:/ODSH-bridge`，
+  见 `docker-compose.snippet.yml`）。
+- OpenClaw 网关侧需要放行（见 `docs/PROTOCOL.md` §2.1）：
+  - `gateway.controlUi.allowedOrigins` 显式包含你要用的 Origin（如 `http://openclaw:18789`）；
+    ⚠️ 这是受保护配置——直接编辑 `openclaw.json`（先备份）并重启网关生效。
+  - （可选）把 `172.18.0.0/16` 加进 `autoApproveCidrs` 跳过逐个设备审批。
 
-- 两个容器在同一 docker 网络（本项目示例名 `agent-mesh`），容器名分别为 `deepseek-harness` 与 `openclaw`；**两者都必须能互相 ping 通对方容器名**。
-- 共享桥挂载到两侧容器内同一绝对路径（默认 `/root/ODSH-bridge`；宿主机 `H:/ODSH-bridge`，见 `docker-compose.snippet.yml`）。
-- OpenClaw 侧网关放行（见 `docs/PROTOCOL.md` §2.1）：
-  - `gateway.controlUi.allowedOrigins` 显式包含将要使用的 origin（如 `http://openclaw:18789`）；⚠️ 该路径是受保护配置，需直接编辑 `openclaw.json`（先备份）并重启网关生效。
-  - （可选）`autoApproveCidrs` 加入 `172.18.0.0/16` 免逐台批准。
-
-### 部署步骤（3 步 + 1 次批准）
+### 部署步骤（桥核心，3 步 + 1 次批准）
 
 ```bash
-# 1. 配置环境（在 DSH 容器内，仓库根目录）
+# 1. 配置环境（DSH 容器内，仓库根目录）
 cp .env.example .env
-#   编辑 .env：OC_TOKEN=<openclaw.json → gateway.auth.token 的取值>；按需填 DISCORD_CHANNEL_ID 等
+#   编辑 .env：OC_TOKEN=<openclaw.json → gateway.auth.token 的值>；按需填 DISCORD 等
 
 # 2. 配对 + 连接测试
 node src/oc-client.mjs connect
-#   首次会打印「设备未批准」，到 OpenClaw Control UI 批准该 deviceId 后自动连上并保持会话
+#   首次运行会打印 "device not approved"；在 OpenClaw 控制台批准该 deviceId
 
-# 3a. 部署守护进程（daemon 全部 kind 见 docs/BRIDGE-SPEC.md §6；单次可用 --once）
+# 3a. 部署守护进程
 node src/bridge-daemon.mjs --notify --interval-ms 5000
-# 3b. 其它时候手动调网关
-#   node src/oc-invoke.mjs agents.list '{}'   # 通用方法
-#   node src/oc-send.mjs "你好" --channel <id> # 发 Discord 消息
+# 3b. 或手动调用网关
+#   node src/oc-invoke.mjs agents.list '{}'
+#   node src/oc-send.mjs "你好" --channel <id>
 
-# 4. 安装 OpenClaw 侧 skill（没有它，OpenClaw 不知道如何协作）
-#    在 OpenClaw 容器内执行：
+# 4. 安装 OpenClaw 侧 skill（让 OpenClaw 知道如何协作）
+#    在 OpenClaw 容器内：
 mkdir -p /root/.openclaw/skills/odsh-interop
 cp skills/odsh-interop/SKILL.md /root/.openclaw/skills/odsh-interop/SKILL.md
-#    详见 skills/odsh-interop/README.md
 ```
+
+### 启用 Windows 桌面执行（v1.1，可选）
+
+> 完整指引：`docs/CUA-EXECUTION.md`。摘要：
+
+```powershell
+# A. Windows 宿主侧
+irm https://cua.ai/driver/install.ps1 | iex            # 安装 Cua Driver
+#   设置 → 可选功能 → 安装 "OpenSSH 服务器"（GUI 安装可避开 CBS 报错）
+Start-Service sshd; Set-Service sshd -StartupType Automatic
+#   若 Start-Service 失败但 `sshd -d` 正常，用计划任务兜底：
+schtasks /create /tn "sshd-keepalive" /tr "C:\Windows\System32\OpenSSH\sshd.exe" /sc onlogon /ru SYSTEM /rl HIGHEST /f
+Start-Process -WindowStyle Hidden C:\Windows\System32\OpenSSH\sshd.exe
+#   把 DSH 公钥写入（Administrators 用户必须放这）：
+#   C:/ProgramData/ssh/administrators_authorized_keys
+```
+
+```bash
+# B. DSH 容器侧
+apt-get install -y openssh-client
+ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 -C "dsh-bridge-cua"
+cat /root/.ssh/id_ed25519.pub   # → 粘贴到上面的 Windows 文件
+
+# 验证
+ssh -i /root/.ssh/id_ed25519 miko@host.docker.internal whoami
+node src/oc-cua.mjs get_screen_size
+```
+
+> 桥核心不依赖此可选步骤；只有需要真实桌面控制时才启用 Cua 通道。
 
 ---
 
@@ -127,20 +172,26 @@ cp skills/odsh-interop/SKILL.md /root/.openclaw/skills/odsh-interop/SKILL.md
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `OC_HOST` | `openclaw` | 网关容器名（DNS，勿用 IP） |
+| `OC_HOST` | `openclaw` | 网关容器名（用 DNS 不要用 IP） |
 | `OC_PORT` | `18789` | 网关端口 |
-| `OC_TOKEN` | （必填） | `openclaw.json → gateway.auth.token` 的取值；**占位符 REPLACE_WITH_GATEWAY_TOKEN** |
-| `OC_ORIGIN` | `http://<host>:<port>` | 动态构造；需被网关 allowedOrigins 放行 |
-| `OC_KEYS` | `<BRIDGE_PATH>/DSH-Workspace/openclaw-device.json` | 设备身份 JWK 文件（自动生成/复用） |
+| `OC_TOKEN` | （必填） | `openclaw.json → gateway.auth.token` 的值；**占位 REPLACE_WITH_GATEWAY_TOKEN** |
+| `OC_ORIGIN` | `http://<host>:<port>` | 动态生成；须被网关 allowedOrigins 放行 |
+| `OC_KEYS` | `<BRIDGE_PATH>/DSH-Workspace/openclaw-device.json` | 设备身份 JWK（自动生成/复用） |
 | `BRIDGE_PATH` | `/root/ODSH-bridge` | 桥根路径 |
-| `DISCORD_CHANNEL_ID` | （空） | 通知/发送目标频道 id |
+| `DISCORD_CHANNEL_ID` | （空） | 通知/发送目标频道 |
 | `OC_RETRY_MS` | `8000` | oc-client 配对等待/重连间隔 |
 | `OC_CONNECT_TIMEOUT_MS` | `45000` | 连接（握手+配对）超时 |
-| `OC_REPLY_TIMEOUT_MS` | `20000` | 单次 request 超时 |
-| `BRIDGE_INTERVAL_MS` | `5000` | daemon 扫描间隔 |
+| `OC_REPLY_TIMEOUT_MS` | `20000` | 单次请求超时 |
+| `BRIDGE_INTERVAL_MS` | `5000` | 守护进程扫描间隔 |
 | `BRIDGE_RUN_TIMEOUT_MS` | `15000` | `run-command` 超时 |
-| `BRIDGE_ALLOW_ABS_PATHS` | `false` | write/read-file 是否允许绝对路径（安全默认 false） |
+| `BRIDGE_ALLOW_ABS_PATHS` | `false` | 是否允许读写文件使用绝对路径（安全默认 false） |
 | `OC_SEND_SCRIPT` | `src/oc-send.mjs` | 通知用发送脚本路径 |
+| `CUA_SSH_USER` | `miko` | Cua 通道的 Windows 用户名 |
+| `CUA_SSH_HOST` | `host.docker.internal` | 容器可达的 Windows 宿主 |
+| `CUA_SSH_PORT` | `22` | Windows SSH 端口 |
+| `CUA_SSH_KEY` | `/root/.ssh/id_ed25519` | SSH 私钥 |
+| `CUA_BIN` | `C:/Users/<user>/AppData/Local/Programs/Cua/cua-driver/bin/cua-driver.exe` | Windows 端 cua-driver 完整路径 |
+| `CUA_TIMEOUT_MS` | `60000` | 单次调用超时 |
 
 ---
 
@@ -148,94 +199,111 @@ cp skills/odsh-interop/SKILL.md /root/.openclaw/skills/odsh-interop/SKILL.md
 
 ```
 plugin-release/
-├── README.md                  本文档（英文）
-├── README.zh.md               中文对照版
+├── README.md                  本说明（中）＝README.zh.md（EN 见 README.md）
 ├── AUTHORS.md                 维护者 / 贡献者
 ├── CHANGELOG.md               版本历史（Keep a Changelog）
 ├── MAINTENANCE.md             已验证的故障排查笔记
 ├── docs/
 │   ├── PROTOCOL.md            网关握手/帧/方法/错误/幂等
-│   └── BRIDGE-SPEC.md         桥四区 / 信封 schema / 状态机 / 原子写
+│   ├── BRIDGE-SPEC.md         桥四区/信封 schema/状态机/原子写
+│   └── CUA-EXECUTION.md       Windows 桌面执行（安装/授权/使用）
 ├── skills/
-│   └── odsh-interop/          OpenClaw 侧技能（SKILL.md + 安装 README）
+│   └── odsh-interop/          OpenClaw 侧 skill（SKILL.md + 安装 README）
 ├── src/
-│   ├── env.mjs                .env 加载（零依赖）
-│   ├── gateway-client.mjs     公共 WS+配对模块（openSession/request/safeClose）
-│   ├── oc-invoke.mjs          通用网关方法调用 CLI
-│   ├── oc-send.mjs            Discord 消息 CLI（tools.invoke message）
-│   ├── oc-client.mjs          长连接/配对等待 CLI（connect / node <method>）
-│   └── bridge-daemon.mjs      桥守护进程（watch 信封 → 执行 → 回写 → 通知）
-├── config/
-│   ├── odsh-bridge.ts         Cordis 插件编排（B 方式）
-│   └── cordis.yml             合并片段示例
-├── docker-compose.snippet.yml 桥挂载 + agent-mesh 网络片段
-├── package.json               元数据 + bin + npm run check
-├── .env.example               配置样例（全占位符）
-├── LICENSE                    MIT
-└── CONTRIBUTING.md            本地复现 / 加 kind / 测试
+│   ├── env.mjs                .env 加载器
+│   ├── gateway-client.mjs     共享 WS/Ed25519 配对客户端
+│   ├── oc-invoke.mjs          调用任意网关方法
+│   ├── oc-send.mjs            经网关发消息
+│   ├── oc-client.mjs          配对等待 / 长连客户端
+│   ├── oc-cua.mjs             （v1.1）SSH + Cua Driver 桌面执行
+│   ├── bridge-daemon.mjs      信封监视/执行器
+│   └── bridge-cleanup.mjs     留存清理工具
+├── config/                    Cordis 插件形态（⚠️ 可选，未经产品验证）
+├── .env.example               环境变量模板（全占位）
+└── LICENSE  ·  package.json  ·  docker-compose.snippet.yml
 ```
 
 ---
 
-## 6. 两种集成方式
+## 6. 集成方式
 
-### A. 独立 node CLI / 守护进程（推荐，已验证形态）
+### A. 独立 CLI / 守护进程（推荐，已验证形态）
 
-- 零构建零 npm 依赖，`node src/xxx.mjs` 直接用；`.env` 由 `src/env.mjs` 自动加载。
-- 连接关闭统一走 `safeClose()`（`gateway-client.mjs`）：新版 `node:net` ESM 的 Socket 只有 `destroy()/resetAndDestroy()`，没有 `.close()`，兼容层优先 `.close()` → `.destroy()` → `.resetAndDestroy()`，全部调用点已替换（请勿在新增代码里直接用 `sock.close()`）。
-- 守护进程常驻：`node src/bridge-daemon.mjs --notify --interval-ms 5000`（用 systemd/supervisor 托管即可）。
-- 本仓库所有脚本在此形态下交付使用；与你现有 DSH 主进程解耦，互不阻塞。
+- 零构建、零 npm 依赖，直接 `node src/xxx.mjs` 运行；`.env` 由 `src/env.mjs` 自动加载。
+- 连接统一经 `safeClose()`（`gateway-client.mjs`）：新版 `node:net` ESM Socket 只有
+  `destroy()/resetAndDestroy()`、没有 `.close()`；见 `gateway-client.mjs` 内注释。
+- 守护进程长驻：`node src/bridge-daemon.mjs --notify --interval-ms 5000`（可用 systemd/supervisor 托管）。
 
-### B. 作为 Cordis 插件挂进 DSH（⚠️ 未在产品环境实测）
+### B. 挂载进 DSH 作为 Cordis 插件（⚠️ 未经产品环境验证）
 
-- DSH 是 Cordis 体系：`config/odsh-bridge.ts` 用 `export function apply(ctx, config)` 形态，在 `ctx.effect()` 内以子进程拉起 `bridge-daemon.mjs`，卸载/热更新时 SIGTERM 回收——与官方 cordis-tutorial（02-lifecycle-and-effects.md）的原则一致。
-- `config/cordis.yml` 是 `insert:` 合并片段（同 DSH `examples/mcp-memory/*.cordis.yml` 的语法），把 daemon 作为插件条目挂进根 `cordis.yml`：
-  - 优点：随 DSH 生命周期托管，热更新可回收子进程；
-  - 注意：脚本仍作为独立进程运行，只是生命周期由 Cordis 管理；
-  - ⚠️ 该挂载路径未在产品环境实测，请先按文档 A 方式跑通，再切换。
-
----
-
-## 7. 安全注意事项
-
-1. **token 绝不入库**：`OC_TOKEN` 只存在于 `.env`（已 gitignore）；仓库里的 `.env.example` 全是占位符。
-2. **设备配对**：`deviceId` 是设备指纹（Ed25519 公钥的哈希），批准即给予 operator 级权限（含 `operator.admin`/`approvals`/`pairing`）——务必确保网络隔离，不要随意批准陌生设备。
-3. **origin 白名单**：宽泛放行降低安全性，生产环境只放行实际使用的 origin；改白名单需重启网关生效。
-4. **私钥权限**：JWK 文件生成即 `0600`，位于 DSH-Workspace（对方容器不得改）。
-5. **run-command**：daemon 的 `run-command` 有 shell 执行能力（原样校验：首词禁 `;`、`&`、`|`、反引号），仅限可信信封来源；生产建议额外加 requester 白名单（见 BRIDGE-SPEC §8）。
+- `config/odsh-bridge.ts`：`export function apply(ctx, config)` 形态，在 `ctx.effect()` 内
+  spawn `bridge-daemon.mjs`，卸载/热重载时 SIGTERM 回收（与官方 Cordis 教程一致）。
+  `config/cordis.yml` 是 `insert:` 合并片段。
+- ⚠️ 该挂载路径未经产品环境验证——先跑通 A，再切换。
 
 ---
 
-## 8. 常见故障排查
+## 7. Windows 桌面执行（Cua Driver）
 
-| 现象 | 原因 | 处理 |
+完整指引见 **`docs/CUA-EXECUTION.md`**。摘要：
+
+- **为什么**：给 DSH 执行层在 Windows 宿主上提供真实、不抢焦点的桌面控制——
+  截图、点击/键入、浏览器自动化（CDP）、拉起应用；无需 OpenClaw Desktop，也无需专用节点进程。
+- **怎么跑**：`src/oc-cua.mjs` 执行 `ssh -i <key> <user>@<host> "cua-driver call <tool> '<json>'"`。
+- **安全姿态**：SSH 仅密钥（`BatchMode=yes`），Windows 侧只放行 DSH 容器的公钥；
+  驱动操作真实桌面但**不偷焦点**。
+
+---
+
+## 8. 安全说明
+
+1. **绝不入库 token**：`OC_TOKEN` 只在 `.env`（已 gitignore）；仓库 `.env.example` 全是占位符。
+2. **设备配对**：`deviceId` 是设备指纹（Ed25519 公钥的哈希）；批准即授予 operator 级权限——
+   确保网络隔离，不要随意批准陌生设备。
+3. **Origin 白名单**：开太宽会降低安全性；生产只放行你实际使用的 Origin；改白名单需重启网关。
+4. **私钥权限**：JWK 文件以 `0600` 创建并存在 DSH-Workspace（另一容器不得修改）。
+5. **run-command**：守护进程的 `run-command` 可执行 shell（逐字检查：首词不得以 `;`、`&`、`|`、
+   反引号开头）——仅信任信封来源；生产建议加 requester 白名单（见 BRIDGE-SPEC §8）。
+6. **Cua 通道**：SSH 密钥限定 DSH 身份；`CUA_SSH_*` 放受控环境变量（绝不入库）；
+   宿主或容器失陷时立即吊销密钥。
+
+---
+
+## 9. 常见故障排查
+
+| 症状 | 原因 | 解决 |
 |---|---|---|
-| `spawn <script> ENOENT` | 用 DSH 的 tool-runner exec 通道拉起脚本时找不到命令/环境 | 换用长会话（`oc-client connect`）+ 手动 shell 启动 daemon；或把 node 路径写全（`which node`）。⚠️ 验证环境该问题存在，需自行验证你的 DSH 运行器配置。 |
-| `ECONNREFUSED / ENOTFOUND` | 连不到网关 | 检查两容器是否在同一 docker 网络、容器名是否正确（`docker exec openclaw getent hosts openclaw`） |
-| `handshake rejected / 非 101` | origin 未放行 | 把所用 origin 加入 `gateway.controlUi.allowedOrigins` 并重启网关（先备份 openclaw.json） |
-| 容器 IP 对调后连接失效 | 硬编码了 IP | 全部改用容器名 DNS（默认 `OC_HOST=openclaw`），重启后无需重配 |
-| `device signature invalid`（偶发、似随机） | **确凿根因（控制变量实验确认）**：claim 签名时间戳与 `device.signedAt` 用了两次 `Date.now()` → 毫秒级不一致 → 网关用 `signedAt` 重建 claim 验签必然失败，仅同毫秒时偶发通过 | 若代码遇到此错，**先检查是否两处时间戳**：应只取一次 `const signedAt = Date.now()`，同时用于 claim 与 device.signedAt（参考 `src/gateway-client.mjs` 现实现；已修复并 4/4 连续成功，health/agents.list/status/oc-send 全通） |
-| `PAIRING_REQUIRED` | 设备未批准 | Control UI 批准该 deviceId，随后自动重连成功 |
-| daemon 不处理信封 | 已处理（.state 记录）/文件名非 `T-*.json` | 清 `.state` 或换新 taskId；检查文件权限 |
+| `spawn <script> ENOENT` | 经 DSH 工具执行通道启动时命令/环境缺失 | 用长连会话（`oc-client connect`）+ 手动 shell 启动守护进程；给出完整 node 路径（`which node`）。⚠️ 请验证你的 DSH runner 配置。 |
+| `ECONNREFUSED / ENOTFOUND` | 网关不可达 | 确认两容器在同一 docker 网络、容器名正确（`docker exec openclaw getent hosts openclaw`） |
+| `handshake rejected / non-101` | Origin 未放行 | 把所用 Origin 加入 `gateway.controlUi.allowedOrigins` 并重启网关（先备份 openclaw.json） |
+| 容器 IP 变化后断连 | 硬编码了 IP | 全用容器名 DNS（默认 `OC_HOST=openclaw`） |
+| `device signature invalid`（偶发） | **已确认真因**：认领串时间戳与 `device.signedAt` 用了两次 `Date.now()` → 毫秒不一致 | 二者共用同一个 `const signedAt = Date.now()`（见 `gateway-client.mjs`） |
+| `PAIRING_REQUIRED` | 设备未批准 | 在控制台批准对应 deviceId |
+| 守护进程不处理信封 | 已处理过（`.state`）/ 文件名非 `T-*.json` | 清 `.state` 或换新 taskId |
+| Cua：22 端口 `Connection refused` | sshd 未运行（服务管理器启动失败） | 用 `sshd.exe -d` 调试确认；若能跑，用计划任务兜底（见 docs/CUA-EXECUTION.md §1.2） |
+| Cua：`Permission denied (publickey)` | 公钥未在 `administrators_authorized_keys`（Administrators 用户） | 把 DSH 公钥放进去并 `icacls ... Administrators:F`；见 §1.4 |
+| Cua：`cua-driver: not recognized` / 路径不对 | PATH / 安装位置不同 | 把 `CUA_BIN` 设为 `cua-driver.exe` 的真实完整路径 |
 
 ---
 
-## 9. Roadmap（未实现 / 未验证 → 全部标注 ⚠️）
+## 10. 路线图
 
-- **F-1** Windows Node 执行节点（`target: windows-node`）桥接：信封 `target` 预留，执行器未实现 ⚠️。
-- **F-2** ~~读方向补齐~~ **已实测通过**：`message` 工具 `action=read` 的 args 形态为 `{action:"read",channel:"discord",to:"channel:<id>"}`，`tools.invoke` 可返回完整频道历史（2026-08-20 实测）。
-- **F-3** ~~网关 anti-replay / signature invalid 的稳定处理~~ **已解决**：根因是 claim 与 `device.signedAt` 用了两次 `Date.now()`（毫秒级不一致），已统一为单一 `signedAt` 并 4/4 实测通过；剩余可选项是自动重试策略（低优先级）。
-- **F-4** daemon 的 `requester` 白名单可启用开关（生产加固）⚠️。
-- **F-5** 持久化订阅网关事件（`caps:["tool-events"]`）——连接阶段的 `event` 帧当前忽略 ⚠️。
-
----
-
-## 10. 相关链接
-
-- DSH：`/app/docs/cordis-tutorial/`（插件形态）、DSH examples/mcp-memory（cordis.yml 合并语法）
-- GitHub topic：`dsh-plugin`（本仓库发布后加入该 topic）
-- 协议细节：docs/PROTOCOL.md ｜ 桥规范：docs/BRIDGE-SPEC.md
+- **F-2（完成）** `message` 工具读取方向已验证：`{action:"read",channel:"discord",to:"channel:<id>"}`。
+- **F-3（完成）** 网关防重放 / signature invalid 根因已修（单一 `signedAt`）。
+- **F-4** 守护进程 `requester` 白名单（生产加固）⚠️。
+- **F-5** 持久订阅网关事件（`caps:["tool-events"]`）⚠️。
+- **F-6** Cua 通道加固：能力清单（`--permission-mode bounded`）+ 按应用白名单 ⚠️。
+- **F-7** 信封 `target: windows-node` 保留但不再使用；Cua 通道是受支持的桌面路径。
 
 ---
 
-> 维护：ODSH Bridge contributors · License: MIT · Node >= 18 · 零依赖 ESM
+## 11. 致谢
+
+- **Cua** — 本项目的 Windows 桌面执行层由
+  [Cua Driver](https://github.com/trycua/cua)（trycua 团队）提供支持。感谢他们开源了一个
+  跨平台、不抢焦点的 computer-use 驱动，让 agent 可以在不抢走用户鼠标的情况下操作桌面应用。
+  Cua Driver 由其作者独立许可——详见其仓库。
+
+---
+
+> 维护：ODSH Bridge contributors · 许可证：MIT · Node >= 18 · 零依赖 ESM

@@ -17,6 +17,10 @@ const idxi = process.argv.indexOf('--interval-ms');
 const INTERVAL_MS = Number(idxi >= 0 ? process.argv[idxi + 1] : 5000) || 5000;
 const CHANNEL = process.env.DISCORD_CHANNEL_ID || ''; // override via .env; if empty, notifications are skipped
 const SEND_SCRIPT = process.env.OC_SEND_SCRIPT || '/root/ODSH-bridge/DSH-Workspace/tools/oc_send.mjs';
+// Back-compat: routes commands to a paired node via gateway node.invoke.
+// This is NOT the recommended desktop path anymore — use docs/CUA-EXECUTION.md
+// (oc-cua.mjs over SSH + Cua Driver). Kept for envelopes that still target it.
+const NODE_SCRIPT = process.env.OC_NODE_SCRIPT || join(BRIDGE, 'DSH-Workspace', 'tools', 'oc_cua.mjs');
 
 mkdirSync(STATE, { recursive: true });
 
@@ -73,6 +77,26 @@ function executePayload(task) {
       const src = file.startsWith('/') ? file : join(BRIDGE, file);
       if (!existsSync(src)) return { error: 'not found: ' + src };
       return { content: readFileSync(src, 'utf8').slice(0, 4000) };
+    }
+    // Back-compat node envelope: kept so old envelopes still route, but the desktop execution
+    // path is now docs/CUA-EXECUTION.md (oc-cua.mjs over SSH + Cua Driver).
+    // Envelope: payload.kind = "run-node" | "windows-node"; payload.args = { nodeId?, command, params? }
+    case 'run-node':
+    case 'windows-node': {
+      const { command = '', params = {} } = p.args || {};
+      const cmd = String(command).trim();
+      if (!cmd) return { error: 'no node command' };
+      try {
+        const out = execFileSync('node', [NODE_SCRIPT, cmd, JSON.stringify(params)], {
+          timeout: 60000, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024,
+        });
+        return { node: 'cua', command: cmd, reply: out.slice(0, 3000) };
+      } catch (e) {
+        return {
+          error: e.message,
+          stderr: String(e.stderr || '') + String(e.stdout || '').slice(0, 2000)
+        };
+      }
     }
     case 'bridge-status':
       return { input: envelopeCandidates().length, output: readdirSync(OUTPUT).length };

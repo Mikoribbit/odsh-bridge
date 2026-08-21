@@ -1,6 +1,6 @@
 {
   "name": "odsh-bridge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "OpenClaw x DeepSeek Harness bridge: gateway WebSocket client (Ed25519 pairing) + file-based envelope daemon. Zero dependencies, pure ESM.",
   "type": "module",
   "private": false,
@@ -23,7 +23,8 @@
     "oc-invoke": "src/oc-invoke.mjs",
     "oc-send": "src/oc-send.mjs",
     "oc-client": "src/oc-client.mjs",
-    "bridge-daemon": "src/bridge-daemon.mjs"
+    "bridge-daemon": "src/bridge-daemon.mjs",
+    "oc-cua": "src/oc-cua.mjs"
   },
   "files": [
     "src/**",
@@ -34,6 +35,6 @@
     ".env.example"
   ],
   "scripts": {
-    "check": "node --check src/env.mjs && node --check src/gateway-client.mjs && node --check src/oc-invoke.mjs && node --check src/oc-send.mjs && node --check src/oc-client.mjs && node --check src/bridge-daemon.mjs"
+    "check": "node --check src/env.mjs && node --check src/gateway-client.mjs && node --check src/oc-invoke.mjs && node --check src/oc-send.mjs && node --check src/oc-client.mjs && node --check src/oc-cua.mjs && node --check src/bridge-daemon.mjs"
   }
 }

@@ -141,7 +141,19 @@ cp skills/odsh-interop/SKILL.md /root/.openclaw/skills/odsh-interop/SKILL.md
 
 ### Enable Windows desktop execution (v1.1, optional)
 
-> Full guide: `docs/CUA-EXECUTION.md`. Summary:
+> Full guide: `docs/CUA-EXECUTION.md`. **Fastest path — two idempotent one-shot scripts:**
+>
+> ```powershell
+> # Windows host (Administrator PowerShell)
+> .\scripts\setup-windows.ps1 -BridgePath C:\ODSH-bridge
+> ```
+> ```bash
+> # DSH container
+> ./scripts/setup-dsh.sh --bridge /root/ODSH-bridge --host host.docker.internal
+> ```
+> Each script detects what is already done and skips it; they write
+> `windows-connect.json` / `.env` for each other, and the DSH side ends with a live
+> `get_screen_size` verification. Manual steps below (for reference / troubleshooting):
 
 ```powershell
 # A. On the Windows host
@@ -222,6 +234,9 @@ plugin-release/
 │   ├── oc-cua.mjs             (v1.1) SSH + Cua Driver desktop execution
 │   ├── bridge-daemon.mjs      Envelope watcher/executor
 │   └── bridge-cleanup.mjs     Retention cleanup tool
+├── scripts/                   One-shot idempotent setup
+│   ├── setup-windows.ps1      Windows host: Cua Driver + OpenSSH + firewall + key + connect json
+│   └── setup-dsh.sh           DSH container: ssh client + key + .env + verify get_screen_size
 ├── config/                    Cordis plugin form (⚠️ optional, not product-verified)
 ├── .env.example               Env template (all placeholders)
 └── LICENSE  ·  package.json  ·  docker-compose.snippet.yml

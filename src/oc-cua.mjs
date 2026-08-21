@@ -30,6 +30,8 @@
 //   - 输出：cua-driver 的 JSON 响应原样打印到 stdout；非零退出码表示失败。
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
+import { loadEnvFile } from './env.mjs';
+loadEnvFile(process.env.OC_ENV_FILE || '.env');
 
 // ---- config ----
 const args = process.argv.slice(2);

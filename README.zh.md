@@ -139,7 +139,18 @@ cp skills/odsh-interop/SKILL.md /root/.openclaw/skills/odsh-interop/SKILL.md
 
 ### 启用 Windows 桌面执行（v1.1，可选）
 
-> 完整指引：`docs/CUA-EXECUTION.md`。摘要：
+> 完整指引：`docs/CUA-EXECUTION.md`。**最快路径——两个幂等的一键脚本：**
+>
+> ```powershell
+> # Windows 宿主（管理员 PowerShell）
+> .\scripts\setup-windows.ps1 -BridgePath C:\ODSH-bridge
+> ```
+> ```bash
+> # DSH 容器
+> ./scripts/setup-dsh.sh --bridge /root/ODSH-bridge --host host.docker.internal
+> ```
+> 每个脚本自动检测已完成步骤并跳过；它们互相写入 `windows-connect.json` / `.env`，
+> DSH 侧脚本最后会做一次真实的 `get_screen_size` 验证。以下手动步骤供参考/排查：
 
 ```powershell
 # A. Windows 宿主侧
@@ -218,6 +229,9 @@ plugin-release/
 │   ├── oc-cua.mjs             （v1.1）SSH + Cua Driver 桌面执行
 │   ├── bridge-daemon.mjs      信封监视/执行器
 │   └── bridge-cleanup.mjs     留存清理工具
+├── scripts/                   一键幂等部署
+│   ├── setup-windows.ps1      Windows 宿主：Cua Driver + OpenSSH + 防火墙 + 公钥 + 连接信息
+│   └── setup-dsh.sh           DSH 容器：ssh 客户端 + 密钥 + .env + 验证 get_screen_size
 ├── config/                    Cordis 插件形态（⚠️ 可选，未经产品验证）
 ├── .env.example               环境变量模板（全占位）
 └── LICENSE  ·  package.json  ·  docker-compose.snippet.yml

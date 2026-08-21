@@ -24,6 +24,14 @@ removal of the early "Windows Node" experiment.
   async bridge / desktop execution), verified-features incl. Cua, quick
   start incl. Cua enablement, .env table incl. `CUA_*`, roadmap F-6/F-7,
   and a **Credits** section thanking the trycua team (Cua Driver).
+- **One-shot setup scripts** (`scripts/setup-windows.ps1` + `scripts/setup-dsh.sh`):
+  idempotent Windows-host and DSH-container installers — Cua Driver locate/install,
+  OpenSSH service + scheduled-task fallback, firewall 22, Administrators key placement
+  (`administrators_authorized_keys`), `cua-driver serve` check, bridge
+  `windows-connect.json` handoff, DSH `.env` `CUA_*` write, SSH test, and a live
+  `get_screen_size` verification.
+- **`oc-cua.mjs` loads `.env`** (via `env.mjs`) so `CUA_BIN` from setup-dsh's `/ .env`
+  or `windows-connect.json` is honored.
 - **`CUA_*` environment variables**: `CUA_SSH_USER`, `CUA_SSH_HOST`,
   `CUA_SSH_PORT`, `CUA_SSH_KEY`, `CUA_BIN`, `CUA_TIMEOUT_MS`.
 

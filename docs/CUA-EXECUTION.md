@@ -24,7 +24,41 @@ DSH (容器) ──SSH(22, ed25519 免密)──► Windows 宿主
 
 ---
 
-## 1. Windows 宿主侧（一次性配置）
+## 0. 一键部署（推荐，替代手动步骤）
+
+仓库提供两个幂等脚本，对着跑一遍即完成环境（可重复运行，已完成的步骤自动跳过）：
+
+### 0.1 Windows 宿主侧（管理员 PowerShell）
+
+```powershell
+# 自动：安装/定位 Cua Driver、开 OpenSSH（含服务管理器失败的计划任务兜底）、
+#      防火墙 22、把 DSH 公钥放进正确位置、确保 cua-driver serve 在跑、
+#      并把连接信息写入桥（windows-connect.json）
+.\scripts\setup-windows.ps1 -BridgePath C:\ODSH-bridge
+# 若没找到 DSH 公钥（还没跑 DSH 侧脚本），会提示，可先跑 0.2 再重跑本脚本
+```
+
+### 0.2 DSH 容器侧（bash）
+
+```bash
+# 自动：装 ssh 客户端、生成 ed25519 密钥（幂等）、发布公钥到桥、
+#      读桥里 windows-connect.json 的 CUA_BIN/用户名、写 .env CUA_*、
+#      测试 SSH、最后直接验证 get_screen_size
+./scripts/setup-dsh.sh --bridge /root/ODSH-bridge --host host.docker.internal
+# 若 Windows 侧还没生成 windows-connect.json，可先手动传 --user miko，
+# 之后 Windows 侧跑完 0.1 再重跑本脚本即可自动补齐真实 CUA_BIN
+```
+
+> 两个脚本按任意顺序都可用；推荐先 Windows(0.1) 再 DSH(0.2)，或先 DSH 出公钥、
+> 再 Windows 放公钥并写连接信息、再重跑 DSH 完成验证。完成后：
+>
+> ```bash
+> node src/oc-cua.mjs get_screen_size   # 应返回您的真实分辨率
+> ```
+
+---
+
+## 1. Windows 宿主侧（一次性配置·手动版）
 
 ### 1.1 安装 Cua Driver
 

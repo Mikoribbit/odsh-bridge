@@ -329,6 +329,9 @@ plugin-release/
 
 ## 10. 路线图
 
+> 战略性的分阶段长期项目（插件生态、ClawHub 发布、事件总线）见 [`ROADMAP.md`](ROADMAP.md)。
+> 本小节追踪下述战术性的 F-item 工作。
+
 - **F-2（完成）** `message` 工具读取方向已验证：`{action:"read",channel:"discord",to:"channel:<id>"}`。
 - **F-3（完成）** 网关防重放 / signature invalid 根因已修（单一 `signedAt`）。
 - **F-4** 守护进程 `requester` 白名单（生产加固）⚠️。

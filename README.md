@@ -343,6 +343,10 @@ See **`docs/CUA-EXECUTION.md`** for the full guide. Summary:
 
 ## 10. Roadmap
 
+> Strategic, phase-gated long-term items (plugin ecosystem, ClawHub publishing,
+> event bus) live in [`ROADMAP.md`](ROADMAP.md). This section tracks the tactical
+> F-item work below.
+
 - **F-2 (done)** `message` tool read direction verified: `{action:"read",channel:"discord",to:"channel:<id>"}`.
 - **F-3 (done)** Gateway anti-replay / signature-invalid root cause fixed (single `signedAt`).
 - **F-4** Daemon `requester` allowlist (production hardening) ⚠️.

@@ -8,6 +8,11 @@ follows [SemVer](https://semver.org/).
 
 Patch release — documentation/example correctness (no functional change).
 
+### Added
+
+- `ROADMAP.md`: phase-gated long-term plan (ClawHub skill publishing, Cordis plugin
+  ecosystem, event bus), linked from README §10 (EN + zh).
+
 ### Fixed
 
 - Remove assumptions that the bridge host path is drive "H:": defaults in compose templates

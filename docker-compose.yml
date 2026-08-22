@@ -1,0 +1,56 @@
+# ============================================================================
+# ODSH Bridge - docker-compose.yml (v1.1 template, runnable)
+# 一键拉起：OpenClaw（大脑/网关）+ DeepSeek Harness（DSH，执行层）+ 共享桥目录
+#
+# USAGE (from a directory that contains this repo):
+#   1. mkdir bridge && cp -r bridge-template/ bridge/   # or use your own bridge path
+#   2. cp .env.example .env  &&  fill OC_TOKEN etc.
+#   3. Set ODSH_BRIDGE_HOST_DIR to the host path of your bridge dir
+#      (Windows/Docker Desktop:  H:/ODSH-bridge  style;  Linux: /srv/odsh-bridge)
+#   4. docker compose up -d
+#   5. node src/oc-client.mjs connect  (DSH side) - approve the deviceId in the Control UI
+#
+# NOTE ON IMAGES:
+#   - openclaw         -> official image  openclaw/openclaw:latest  (verified on Docker Hub;
+#                        also published via the openclaw repo's Dockerfile)
+#   - deepseek-harness -> NO public image. DSH is built from the DeepSeek Harness
+#                        source (clone the official repo, build its Dockerfile, tag as
+#                        deepseek-harness:local). If you publish your own, replace the
+#                        image line below.
+# ============================================================================
+
+name: odsh-bridge
+
+networks:
+  agent-mesh:
+    driver: bridge
+
+services:
+  # ---------- OpenClaw: brain / persona / gateway (18789) ----------
+  openclaw:
+    image: openclaw/openclaw:latest        # official Docker Hub image (verified)
+    container_name: openclaw
+    # user: "${UID}:${GID}"                # enable if WSL2 cross-mount EACCES occurs
+    networks: [agent-mesh]
+    ports:
+      - "18789:18789"                      # gateway control UI / WS
+    volumes:
+      - "${ODSH_BRIDGE_HOST_DIR:-H:/ODSH-bridge}:/root/ODSH-bridge"
+    restart: unless-stopped
+
+  # ---------- DeepSeek Harness: execution layer (this repo's scripts) ----------
+  deepseek-harness:
+    # build: .  (build from the DeepSeek Harness repo: clone official GitHub, then
+    #          docker build -t deepseek-harness:local . )
+    image: deepseek-harness:local          # ← replace with your DSH image if you have one
+    container_name: deepseek-harness
+    networks: [agent-mesh]
+    ports:
+      - "3080:3080"                        # DSH web GUI (set to 127.0.0.1:3080:3080 to bind loopback)
+    volumes:
+      - "${ODSH_BRIDGE_HOST_DIR:-H:/ODSH-bridge}:/root/ODSH-bridge"
+      - ./src:/opt/odsh-bridge/src:ro
+      - ./.env:/opt/odsh-bridge/.env:ro
+    restart: unless-stopped
+    # (optional) auto-run the bridge daemon inside DSH:
+    # command: /bin/sh -c "cd /opt/odsh-bridge && node src/bridge-daemon.mjs --notify --interval-ms 5000 & exec /entrypoint.sh"

@@ -104,6 +104,25 @@ cd odsh-bridge
 # zero dependencies — nothing to install; `.env` is auto-loaded by `src/env.mjs`
 ```
 
+### 3.0.1 Bring up the containers (Docker Desktop / Docker Engine required)
+
+```bash
+# 1. Make your bridge directory from the template (four zones)
+cp -r bridge-template /srv/odsh-bridge          # or H:/ODSH-bridge on Docker Desktop/Windows
+
+# 2. Configure
+cp .env.example .env                             # fill OC_TOKEN, DISCORD_CHANNEL_ID etc.
+export ODSH_BRIDGE_HOST_DIR=/srv/odsh-bridge     # path of your bridge dir
+
+# 3. Start OpenClaw + DSH on the shared agent-mesh network
+docker compose up -d
+
+# 4. (DSH image) if you haven't built deepseek-harness yet, see the image note:
+#    clone the DeepSeek Harness repo, docker build -t deepseek-harness:local . , or set your image
+```
+> Without Docker Desktop (e.g. bare Podman/Buildx), you can still run the bridge core:
+> only the two containers + shared mount matter; adapt the compose to your engine.
+
 ### Prerequisites (environment prep, verified)
 
 - Both containers on the same docker network (this repo's example name is `agent-mesh`), named
@@ -238,8 +257,10 @@ plugin-release/
 │   ├── setup-windows.ps1      Windows host: Cua Driver + OpenSSH + firewall + key + connect json
 │   └── setup-dsh.sh           DSH container: ssh client + key + .env + verify get_screen_size
 ├── config/                    Cordis plugin form (⚠️ optional, not product-verified)
+├── docker-compose.yml         Runnable compose template (OpenClaw official image + DSH build/image)
+├── bridge-template/           Copy-ready directory bridge: Input/ Output/ DSH-Workspace/ Openclaw-Workspace/
 ├── .env.example               Env template (all placeholders)
-└── LICENSE  ·  package.json  ·  docker-compose.snippet.yml
+└── LICENSE  ·  package.json  ·  docker-compose.snippet.yml (legacy snippet)
 ```
 
 ---

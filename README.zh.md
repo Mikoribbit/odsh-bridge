@@ -103,6 +103,24 @@ cd odsh-bridge
 # 零依赖——无需安装任何东西；`.env` 由 `src/env.mjs` 自动加载
 ```
 
+### 3.0.1 拉起容器（需要 Docker Desktop / Docker Engine）
+
+```bash
+# 1. 从模板生成你的桥目录（四区）
+cp -r bridge-template /srv/odsh-bridge          # Docker Desktop/Windows 可用 H:/ODSH-bridge
+
+# 2. 配置
+cp .env.example .env                             # 填 OC_TOKEN、DISCORD_CHANNEL_ID 等
+export ODSH_BRIDGE_HOST_DIR=/srv/odsh-bridge     # 你的桥目录宿主路径
+
+# 3. 在共享 agent-mesh 网络启动 OpenClaw + DSH
+docker compose up -d
+
+# 4.（DSH 镜像）若尚未构建 deepseek-harness：
+#    克隆 DeepSeek Harness 官方仓库 → docker build -t deepseek-harness:local .，或在 compose 里换成你的镜像
+```
+> 没有 Docker Desktop 也能跑桥核心（如 Podman/Buildx）：只需两个容器 + 共享挂载，按你的引擎调整 compose。
+
 ### 前置条件（已验证）
 
 - 两个容器位于同一 docker 网络（本仓库示例名 `agent-mesh`），名字分别为
@@ -233,8 +251,10 @@ plugin-release/
 │   ├── setup-windows.ps1      Windows 宿主：Cua Driver + OpenSSH + 防火墙 + 公钥 + 连接信息
 │   └── setup-dsh.sh           DSH 容器：ssh 客户端 + 密钥 + .env + 验证 get_screen_size
 ├── config/                    Cordis 插件形态（⚠️ 可选，未经产品验证）
+├── docker-compose.yml         可运行的 compose 模板（OpenClaw 官方镜像 + DSH 构建/自定义镜像）
+├── bridge-template/           可直接复制的目录桥：Input/ Output/ DSH-Workspace/ Openclaw-Workspace/
 ├── .env.example               环境变量模板（全占位）
-└── LICENSE  ·  package.json  ·  docker-compose.snippet.yml
+└── LICENSE  ·  package.json  ·  docker-compose.snippet.yml（旧片段）
 ```
 
 ---

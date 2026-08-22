@@ -33,6 +33,11 @@ removal of the early "Windows Node" experiment.
 - **`oc-cua.mjs` loads `.env`** (via `env.mjs`) so `CUA_BIN` from setup-dsh's `/ .env`
   or `windows-connect.json` is honored.
 - **setup-windows.ps1 OpenSSH auto-install** (3 levels): try
+- **Docker onboarding pack**: runnable `docker-compose.yml` template
+  (OpenClaw official image `openclaw/openclaw:latest`, DSH via local build/your image,
+  shared agent-mesh network, bridge mount) + `bridge-template/` directory bridge
+  (Input/Output/DSH-Workspace/Openclaw-Workspace + per-zone READMEs) so new users can
+  bring up both containers and the four-zone bridge in minutes.
   `Add-WindowsCapability` -> `winget Microsoft.OpenSSH.Beta` -> clear GUI guidance,
   all idempotent (re-run continues). The scheduled-task fallback already covers the
   Windows "service manager fails to start sshd" edge case.

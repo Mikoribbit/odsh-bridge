@@ -64,11 +64,29 @@ if(-not $NoAutoServe){
 
 # ---- 2) OpenSSH Server ----
 $sshdExe = "$env:WINDIR\System32\OpenSSH\sshd.exe"
-if(Test-Path $sshdExe){ Ok 'OpenSSH present' } else {
-  Warn 'OpenSSH Server not installed. Install via Settings > Optional features > OpenSSH Server, or run:'
-  Warn '  Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0'
-  Warn 'then re-run this script.'
+if(-not (Test-Path $sshdExe)){
+  Say 'OpenSSH Server not installed - attempting automatic install (level 1: Windows capability)...'
+  try {
+    Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null
+    Ok 'OpenSSH installed via Add-WindowsCapability'
+  } catch {
+    Warn ('Add-WindowsCapability failed: ' + $_.Exception.Message)
+    Say 'Level 2: trying winget (Microsoft OpenSSH Beta)...'
+    try {
+      winget install --id Microsoft.OpenSSH.Beta --source winget --accept-package-agreements --accept-source-agreements -e 2>$null | Out-Null
+      Ok 'OpenSSH installed via winget (Microsoft.OpenSSH.Beta)'
+    } catch {
+      Warn ('winget install failed: ' + $_.Exception.Message)
+      Say 'Level 3: manual step needed. Please install OpenSSH Server via:'
+      Say '  Settings > Optional features > Add feature > "OpenSSH Server"'
+      Say '  (or run as admin:  Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0)'
+      Say '  then re-run this script (it is idempotent and will continue).'
+    }
+  }
+  # re-detect after install attempts
+  $sshdExe = "$env:WINDIR\System32\OpenSSH\sshd.exe"
 }
+if(Test-Path $sshdExe){ Ok ('OpenSSH present: ' + $sshdExe) } else { Warn 'OpenSSH exe still not found after install attempts - manual GUI step required (see above), then re-run.' }
 
 # ensure sshd runs (service manager with scheduled-task fallback)
 if(Test-Path $sshdExe){

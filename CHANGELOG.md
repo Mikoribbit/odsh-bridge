@@ -32,6 +32,10 @@ removal of the early "Windows Node" experiment.
   `get_screen_size` verification.
 - **`oc-cua.mjs` loads `.env`** (via `env.mjs`) so `CUA_BIN` from setup-dsh's `/ .env`
   or `windows-connect.json` is honored.
+- **setup-windows.ps1 OpenSSH auto-install** (3 levels): try
+  `Add-WindowsCapability` -> `winget Microsoft.OpenSSH.Beta` -> clear GUI guidance,
+  all idempotent (re-run continues). The scheduled-task fallback already covers the
+  Windows "service manager fails to start sshd" edge case.
 - **`CUA_*` environment variables**: `CUA_SSH_USER`, `CUA_SSH_HOST`,
   `CUA_SSH_PORT`, `CUA_SSH_KEY`, `CUA_BIN`, `CUA_TIMEOUT_MS`.
 

@@ -137,7 +137,11 @@ docker compose up -d
   - `gateway.controlUi.allowedOrigins` explicitly includes the origin you will use
     (e.g. `http://openclaw:18789`); ⚠️ this path is a protected config — edit `openclaw.json` directly
     (back it up first) and restart the gateway for it to take effect.
-  - (Optional) add `172.18.0.0/16` to `autoApproveCidrs` to skip per-device approval.
+  - ⚠️ Security: keep `autoApproveCidrs` **unset**. Auto-approving the whole docker subnet means any
+    container on it could pair as an operator device. Pair each device once manually.
+  - For untrusted networks, terminate TLS (wss) in front of the gateway (or run it on an isolated
+    docker network that only your two containers join). Without TLS, gateway credentials and the
+    signed connect claim travel in plaintext on that network — acceptable only on a trusted bridge.
 
 ### Deployment steps (bridge core, 3 steps + 1 approval)
 
@@ -198,7 +202,7 @@ ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 -C "dsh-bridge-cua"
 cat /root/.ssh/id_ed25519.pub   # → paste to the Windows file above
 
 # Verify
-ssh -i /root/.ssh/id_ed25519 miko@host.docker.internal whoami
+ssh -i /root/.ssh/id_ed25519 <windows-username>@host.docker.internal whoami
 node src/oc-cua.mjs get_screen_size
 ```
 
@@ -224,7 +228,7 @@ node src/oc-cua.mjs get_screen_size
 | `BRIDGE_RUN_TIMEOUT_MS` | `15000` | `run-command` timeout |
 | `BRIDGE_ALLOW_ABS_PATHS` | `false` | Whether write/read-file may use absolute paths (secure default false) |
 | `OC_SEND_SCRIPT` | `src/oc-send.mjs` | Path to the send script used for notifications |
-| `CUA_SSH_USER` | `miko` | Windows username for the Cua channel |
+| `CUA_SSH_USER` | *(required, no default)* | Windows username for the Cua channel |
 | `CUA_SSH_HOST` | `host.docker.internal` | Windows host reachable from the container |
 | `CUA_SSH_PORT` | `22` | Windows SSH port |
 | `CUA_SSH_KEY` | `/root/.ssh/id_ed25519` | SSH private key |

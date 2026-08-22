@@ -14,7 +14,7 @@
 //   node oc-cua.mjs click '{"pid":123,"x":100,"y":200}'
 //
 // 环境变量（.env / 进程环境）：
-//   CUA_SSH_USER    Windows 用户名（默认 miko）
+//   CUA_SSH_USER    Windows 用户名（必填，无默认；在 .env 或环境变量中设置）
 //   CUA_SSH_HOST    Windows 宿主（默认 host.docker.internal）
 //   CUA_SSH_PORT    SSH 端口（默认 22）
 //   CUA_SSH_KEY     SSH 私钥路径（默认 /root/.ssh/id_ed25519）
@@ -41,6 +41,12 @@ if (!TOOL) {
   console.error('example: node oc-cua.mjs get_desktop_state');
   process.exit(64);
 }
+// SECURITY: the tool name is interpolated into a remote PowerShell/cmd command, so it must be a
+// strict identifier. Reject anything else (blocks injection like: x" & whoami & ").
+if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(TOOL)) {
+  console.error('[oc-cua] invalid tool name: ' + JSON.stringify(TOOL));
+  process.exit(78);
+}
 const JSON_ARGS = args[1] || '{}';
 let parsed;
 try { parsed = JSON.parse(JSON_ARGS); }
@@ -49,7 +55,11 @@ catch {
   parsed = JSON_ARGS;
 }
 
-const SSH_USER = process.env.CUA_SSH_USER || 'miko';
+const SSH_USER = process.env.CUA_SSH_USER || '';
+if (!SSH_USER) {
+  console.error('[oc-cua] CUA_SSH_USER is not set (put it in .env or export it) - see docs/CUA-EXECUTION.md');
+  process.exit(78);
+}
 const SSH_HOST = process.env.CUA_SSH_HOST || 'host.docker.internal';
 const SSH_PORT = process.env.CUA_SSH_PORT || '22';
 const SSH_KEY = process.env.CUA_SSH_KEY || '/root/.ssh/id_ed25519';
@@ -78,7 +88,8 @@ function run() {
   const remote = buildRemote();
   const sshArgs = [
     '-o', 'BatchMode=yes',
-    '-o', 'StrictHostKeyChecking=no',
+    '-o', 'StrictHostKeyChecking=accept-new',
+    '-o', 'UserKnownHostsFile=/root/.ssh/known_hosts',
     '-o', 'ConnectTimeout=10',
     '-i', SSH_KEY,
     '-p', SSH_PORT,

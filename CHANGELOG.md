@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning
 follows [SemVer](https://semver.org/).
 
 ## [1.1.0] — 2026-08-21
+### Security (v1.1.0 hardening — from a full repo audit)
+
+- **oc-cua.mjs: strict tool-name allowlist** (`^[A-Za-z0-9_][A-Za-z0-9_-]*# Changelog
+
+All notable changes to this project will be documented in this file.
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning
+follows [SemVer](https://semver.org/).
+
+) - blocks
+  command injection into the remote PowerShell/cmd call (e.g. `x\" & whoami & \"` fails closed).
+  JSON args stay base64+stdin (safe). `CUA_SSH_USER` is now required (no default).
+- **bridge-daemon: run-command is now argv-allowlisted only** (no `/bin/sh -c`); the old
+  first-word charset check was bypassable (`ls ;id`, `ls && id`). Fixed command map +
+  literal argv passing.
+- **bridge-daemon: read-file/write-file path confinement** - `BRIDGE_ALLOW_ABS_PATHS`
+  (default false) is now actually enforced; absolute paths and `..` are rejected;
+  realpath must stay inside BRIDGE (blocks `.env` / JWK / authorized_keys reads).
+- **bridge-daemon: requester allowlist** (`BRIDGE_ALLOW_REQUESTERS`) - empty accepts all;
+  set e.g. `openclaw,dsh` to restrict which senders can execute envelopes.
+- **bridge-daemon: `.state` atomic write + fail-closed read** (unreadable state aborts the
+  tick instead of silently resetting and re-executing everything).
+- **gateway-client: per-frame random WS mask** (RFC 6455) and **strict handshake**
+  (exact `101` status + `Sec-WebSocket-Accept` SHA-1 check) instead of `includes('101')`.
+- **gateway-client: OC_TOKEN placeholder guard** - refuse to connect with the .env.example
+  placeholder or an empty token.
+- **SSH**: `StrictHostKeyChecking=accept-new` + explicit known_hosts (no more `=no`);
+  `setup-windows.ps1` downloads the Cua installer to a temp file before running it
+  (no blind `irm | iex`), and documents TLS/isolated-network guidance; README/PROTOCOL
+  no longer recommend `autoApproveCidrs`.
+- **Privacy**: Windows username / hostname examples genericized to `<windows-username>`;
+  `CUA_SSH_USER` no longer defaults to a personal name.
+
+---
 
 Cua-powered Windows desktop execution, documentation overhaul, and the
 removal of the early "Windows Node" experiment.

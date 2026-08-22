@@ -134,7 +134,10 @@ docker compose up -d
 - OpenClaw 网关侧需要放行（见 `docs/PROTOCOL.md` §2.1）：
   - `gateway.controlUi.allowedOrigins` 显式包含你要用的 Origin（如 `http://openclaw:18789`）；
     ⚠️ 这是受保护配置——直接编辑 `openclaw.json`（先备份）并重启网关生效。
-  - （可选）把 `172.18.0.0/16` 加进 `autoApproveCidrs` 跳过逐个设备审批。
+  - ⚠️ 安全：保持 `autoApproveCidrs` **不设置**。自动批准整个 docker 子网意味着该子网上任何容器
+    都可能配对成 operator 设备；每个设备请手动批准一次。
+  - 在不信任网络下，请在网关前终止 TLS（wss）（或把它放到只有你的两个容器加入的隔离 docker 网络）。
+    无 TLS 时网关凭据和签名连接串会以明文在网络上传送——仅在可信桥上可接受。
 
 ### 部署步骤（桥核心，3 步 + 1 次批准）
 
@@ -193,7 +196,7 @@ ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 -C "dsh-bridge-cua"
 cat /root/.ssh/id_ed25519.pub   # → 粘贴到上面的 Windows 文件
 
 # 验证
-ssh -i /root/.ssh/id_ed25519 miko@host.docker.internal whoami
+ssh -i /root/.ssh/id_ed25519 <windows-用户名>@host.docker.internal whoami
 node src/oc-cua.mjs get_screen_size
 ```
 
@@ -219,7 +222,7 @@ node src/oc-cua.mjs get_screen_size
 | `BRIDGE_RUN_TIMEOUT_MS` | `15000` | `run-command` 超时 |
 | `BRIDGE_ALLOW_ABS_PATHS` | `false` | 是否允许读写文件使用绝对路径（安全默认 false） |
 | `OC_SEND_SCRIPT` | `src/oc-send.mjs` | 通知用发送脚本路径 |
-| `CUA_SSH_USER` | `miko` | Cua 通道的 Windows 用户名 |
+| `CUA_SSH_USER` | （必填，无默认） | Cua 通道的 Windows 用户名 |
 | `CUA_SSH_HOST` | `host.docker.internal` | 容器可达的 Windows 宿主 |
 | `CUA_SSH_PORT` | `22` | Windows SSH 端口 |
 | `CUA_SSH_KEY` | `/root/.ssh/id_ed25519` | SSH 私钥 |

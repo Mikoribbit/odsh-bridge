@@ -35,6 +35,7 @@
     ".env.example"
   ],
   "scripts": {
-    "check": "node --check src/env.mjs && node --check src/gateway-client.mjs && node --check src/oc-invoke.mjs && node --check src/oc-send.mjs && node --check src/oc-client.mjs && node --check src/oc-cua.mjs && node --check src/bridge-daemon.mjs"
+    "check": "node --check src/env.mjs && node --check src/gateway-client.mjs && node --check src/oc-invoke.mjs && node --check src/oc-send.mjs && node --check src/oc-client.mjs && node --check src/oc-cua.mjs && node --check src/bridge-daemon.mjs && bash -n scripts/setup-dsh.sh && echo ALL_SYNTAX_OK",
+    "prepublishOnly": "node -e \"const fs=require('fs');const bad=['.env'];const hit=bad.filter(f=>fs.existsSync(f));if(hit.length){console.error('blocked: '+hit.join(',')+' present');process.exit(1)}\""
   }
 }

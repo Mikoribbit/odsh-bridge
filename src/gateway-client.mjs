@@ -214,7 +214,10 @@ export class GatewayError extends Error {
 export async function openSession(o = {}) {
   const host = o.host || process.env.OC_HOST || 'openclaw';
   const port = Number(o.port ?? process.env.OC_PORT ?? '18789');
-  const token = o.token ?? process.env.OC_TOKEN ?? '';
+  let token = o.token ?? process.env.OC_TOKEN ?? '';
+  // SECURITY: never ship the .env.example placeholder to a real gateway.
+  if (!token) { throw new Error('OC_TOKEN not set - put gateway.auth.token into .env (see .env.example)'); }
+  if (token === 'REPLACE_WITH_GATEWAY_TOKEN' || token === 'your-gateway-token') { throw new Error('OC_TOKEN is still the placeholder - set a real gateway token'); }
   const bridge = o.bridge || process.env.BRIDGE_PATH || '/root/ODSH-bridge';
   const keyFile = o.keyFile || process.env.OC_KEYS || path.join(bridge, 'DSH-Workspace', 'openclaw-device.json');
   const origin = o.origin || process.env.OC_ORIGIN || `http://${host}:${port}`;
@@ -256,9 +259,16 @@ export async function openSession(o = {}) {
   sock.write(Buffer.from(upgrade));
   const httpResp = await readHttpResp(sock);
   log('[<] handshake: ' + (httpResp.split('\r\n')[0] || '(no status line)'));
-  if (!httpResp.includes('101')) {
+    const statusLine = httpResp.split('\r\n')[0] || '';
+  // SECURITY: verify the exact status line AND the Sec-WebSocket-Accept header (derived from our
+  // nonce key + RFC 6455 GUID). An impostor can't forge this without the key exchange.
+  const expectAccept = crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
+  const statusOk = /^HTTP\/1\.1 101\s/.test(statusLine);
+  const gotAccept = (httpResp.match(/^sec-websocket-accept:\s*(.+)$/im) || [])[1]?.trim();
+  log('[<] handshake: ' + statusLine);
+  if (!statusOk || !gotAccept || gotAccept !== expectAccept) {
     safeClose(sock);
-    throw new Error('WS upgrade was rejected (check whether gateway gateway.controlUi.allowedOrigins allows this origin): ' + httpResp.split('\r\n')[0]);
+    throw new Error('WS upgrade rejected or fingerprint mismatch (status=' + statusLine + ' accept_expected=' + expectAccept + ' accept_got=' + gotAccept + ')');
   }
 
   // 2) challenge → signed connect

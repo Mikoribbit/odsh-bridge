@@ -45,7 +45,7 @@ DSH (容器) ──SSH(22, ed25519 免密)──► Windows 宿主
 #      读桥里 windows-connect.json 的 CUA_BIN/用户名、写 .env CUA_*、
 #      测试 SSH、最后直接验证 get_screen_size
 ./scripts/setup-dsh.sh --bridge /root/ODSH-bridge --host host.docker.internal
-# 若 Windows 侧还没生成 windows-connect.json，可先手动传 --user miko，
+# 若 Windows 侧还没生成 windows-connect.json，可先手动传 --user <your-windows-username>，
 # 之后 Windows 侧跑完 0.1 再重跑本脚本即可自动补齐真实 CUA_BIN
 ```
 
@@ -123,8 +123,8 @@ ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 -C "dsh-bridge-cua"
 cat /root/.ssh/id_ed25519.pub   # ← 复制给 Windows 侧 §1.4
 
 # 3. 连通性自检
-ssh -i /root/.ssh/id_ed25519 miko@host.docker.internal "whoami"
-#   应输出你的 Windows 用户名（如 mikopc2024\miko）
+ssh -i /root/.ssh/id_ed25519 <windows-username>@host.docker.internal "whoami"
+#   应输出你的 Windows 用户名（如 your-pc-name\\your-username）
 ```
 
 ---
@@ -164,7 +164,7 @@ node src/oc-cua.mjs kill_app '{"pid":1234}'
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `CUA_SSH_USER` | `miko` | Windows 用户名 |
+| `CUA_SSH_USER` | （必填，无默认） | Windows 用户名 |
 | `CUA_SSH_HOST` | `host.docker.internal` | Windows 宿主（容器内可达宿主回环） |
 | `CUA_SSH_PORT` | `22` | SSH 端口 |
 | `CUA_SSH_KEY` | `/root/.ssh/id_ed25519` | SSH 私钥 |
@@ -177,7 +177,7 @@ node src/oc-cua.mjs kill_app '{"pid":1234}'
 
 | 检查 | 命令 | 期望 |
 |---|---|---|
-| SSH 通 | `ssh -i <key> miko@host.docker.internal whoami` | 返回 Windows 用户名 |
+| SSH 通 | `ssh -i <key> <windows-username>@host.docker.internal whoami` | 返回 Windows 用户名 |
 | cua 可用 | `node src/oc-cua.mjs --version` | ≥ 0.21.0 |
 | 屏幕读 | `node src/oc-cua.mjs get_screen_size` | `{"width":..., "height":...}` |
 | 桌面访问 | `node src/oc-cua.mjs get_accessibility_tree` | 列出真实进程/窗口 |

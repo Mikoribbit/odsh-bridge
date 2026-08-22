@@ -3,11 +3,16 @@
 // Watches Input/ for new T-*.json envelopes, executes supported kinds,
 // writes Output/<taskId>_result.json, optionally notifies the Discord channel.
 // Usage: node dsh_bridge.mjs [--once] [--interval-ms N] [--notify]
-import { readdirSync, readFileSync, writeFileSync, existsSync, renameSync, mkdirSync } from 'node:fs';
-import { join, basename, dirname } from 'node:path';
+import { readdirSync, readFileSync, writeFileSync, existsSync, renameSync, mkdirSync, realpathSync } from 'node:fs';
+import { join, basename, dirname, resolve, isAbsolute } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-const BRIDGE = '/root/ODSH-bridge';
+const BRIDGE = process.env.BRIDGE_PATH || '/root/ODSH-bridge';
+// SECURITY: read-file/write-file honor this flag. Default false => ONLY relative paths below BRIDGE;
+// absolute paths and any path escaping BRIDGE are rejected (prevents .env / JWK / authorized_keys exfiltration).
+const ALLOW_ABS_PATHS = process.env.BRIDGE_ALLOW_ABS_PATHS === 'true';
+// requester allowlist (F-4): leave empty to accept anyone; set e.g. 'openclaw,dsh' to restrict.
+const ALLOW_REQUESTERS = (process.env.BRIDGE_ALLOW_REQUESTERS || '').split(',').map(s => s.trim()).filter(Boolean);
 const INPUT = join(BRIDGE, 'Input');
 const OUTPUT = join(BRIDGE, 'Output');
 const STATE = join(INPUT, '.state');
@@ -16,11 +21,11 @@ const ONCE = process.argv.includes('--once');
 const idxi = process.argv.indexOf('--interval-ms');
 const INTERVAL_MS = Number(idxi >= 0 ? process.argv[idxi + 1] : 5000) || 5000;
 const CHANNEL = process.env.DISCORD_CHANNEL_ID || ''; // override via .env; if empty, notifications are skipped
-const SEND_SCRIPT = process.env.OC_SEND_SCRIPT || '/root/ODSH-bridge/DSH-Workspace/tools/oc_send.mjs';
+const SEND_SCRIPT = process.env.OC_SEND_SCRIPT || join(process.cwd(), 'src', 'oc-send.mjs');
 // Back-compat: routes commands to a paired node via gateway node.invoke.
 // This is NOT the recommended desktop path anymore — use docs/CUA-EXECUTION.md
 // (oc-cua.mjs over SSH + Cua Driver). Kept for envelopes that still target it.
-const NODE_SCRIPT = process.env.OC_NODE_SCRIPT || join(BRIDGE, 'DSH-Workspace', 'tools', 'oc_cua.mjs');
+const NODE_SCRIPT = process.env.OC_NODE_SCRIPT || join(process.cwd(), 'src', 'oc-cua.mjs');
 
 mkdirSync(STATE, { recursive: true });
 
@@ -29,15 +34,54 @@ function log(...a) { console.log(new Date().toISOString(), ...a); }
 function loadState() {
   const f = join(STATE, 'dsh-processed.json');
   if (!existsSync(f)) return { processed: {} };
-  try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return { processed: {} }; }
+  try {
+    const j = JSON.parse(readFileSync(f, 'utf8'));
+    if (!j || typeof j !== 'object' || !j.processed) throw new Error('bad state shape');
+    return j;
+  } catch (e) {
+    // fail-closed: do NOT silently reset to empty (would re-execute everything)
+    log('state unreadable, refusing to reset: ' + e.message);
+    throw new Error('state unreadable: ' + e.message);
+  }
 }
-function saveState(s) { writeFileSync(join(STATE, 'dsh-processed.json'), JSON.stringify(s, null, 2)); }
+function saveState(s) {
+  const f = join(STATE, 'dsh-processed.json');
+  const tmp = f + '.tmp';
+  writeFileSync(tmp, JSON.stringify(s, null, 2), { mode: 0o600 });
+  renameSync(tmp, f);
+}
 
 function envelopeCandidates() {
   return readdirSync(INPUT).filter(f => /^T-.*\.json$/.test(f));
 }
 
 // Restricted executor for supported payload kinds (DSH local execution)
+// Resolve a file path safely: relative paths are confined under BRIDGE; absolute paths only when
+// ALLOW_ABS_PATHS=true (and even then must not traverse with '..'). Rejects anything escaping BRIDGE.
+function resolveTarget(file, mode) {
+  const rawPath = String(file||'');
+  if (!rawPath || rawPath.includes('\0')) return { error: 'invalid path' };
+  const rel = !isAbsolute(rawPath);
+  if (rel && rawPath.split(/[\\/]/).includes('..')) return { error: 'path traversal not allowed: ' + rawPath };
+  const candidate = rel ? join(BRIDGE, rawPath) : (ALLOW_ABS_PATHS ? rawPath : null);
+  if (!candidate) return { error: 'absolute path not allowed (set BRIDGE_ALLOW_ABS_PATHS=true to enable) - path: ' + rawPath };
+  if (isAbsolute(candidate)) {
+    // ensure it resolves inside BRIDGE (guard symlink-escape too)
+    try {
+      const rp = realpathSync(dirname(candidate) || candidate) || candidate;
+      const bridgeRp = existsSync(BRIDGE) ? realpathSync(BRIDGE) : BRIDGE;
+      if (mode === 'write') {
+        // parent must stay under bridge (file itself may not exist yet)
+        if (!rp.startsWith(bridgeRp + sep())) return { error: 'path escapes bridge: ' + rawPath };
+      } else {
+        if (!rp.startsWith(bridgeRp + sep())) return { error: 'path escapes bridge: ' + rawPath };
+      }
+    } catch (e) { return { error: 'cannot resolve path: ' + rawPath }; }
+  }
+  return { path: candidate };
+}
+function sep(){ return '/'; }
+
 function executePayload(task) {
   const p = task.payload || {};
   const kind = p.kind || 'echo';
@@ -52,11 +96,30 @@ function executePayload(task) {
         text: typeof p.text === 'string' ? p.text.slice(0, 2000) : (p.items ? 'items:' + p.items.length : null)
       };
     case 'run-command': {
-      const cmd = String(p.command || '').trim();
-      if (!cmd) return { error: 'empty command' };
-      if (/[;&|`]/.test(cmd.split(' ')[0])) return { error: 'unsafe command prefix' };
+      // SECURITY (v1.1.0 hardening): no /bin/sh -c. Only a fixed argv allowlist is executed.
+      // Command strings are split on whitespace; the tool must be in the allowlist below,
+      // and every arg is passed as a literal argv element (no shell interpretation).
+      const ALLOWED_BINS = {
+        node: 'node',
+        python3: 'python3',
+        git: 'git',
+        ls: '/bin/ls',
+        cat: '/bin/cat',
+        echo: '/bin/echo',
+        date: '/bin/date',
+        pwd: '/bin/pwd',
+        wc: '/usr/bin/wc',
+        grep: '/usr/bin/grep',
+        wget: '/usr/bin/wget',
+        curl: '/usr/bin/curl',
+      };
+      const tokens = String(p.command || '').trim().split(/\s+/).filter(Boolean).slice(0, 64);
+      if (!tokens.length) return { error: 'empty command' };
+      const binKey = tokens[0];
+      const binPath = ALLOWED_BINS[binKey];
+      if (!binPath) return { error: 'command not allowed: ' + binKey };
       try {
-        const out = execFileSync('/bin/sh', ['-c', cmd], { timeout: 15000, encoding: 'utf8' }).slice(0, 4000);
+        const out = execFileSync(binPath, tokens.slice(1), { timeout: 15000, encoding: 'utf8' }).slice(0, 4000);
         return { stdout: out };
       } catch (e) {
         return { error: e.message, stderr: String(e.stderr || '').slice(0, 2000) };
@@ -67,16 +130,19 @@ function executePayload(task) {
     case 'write-file': {
       const { file, content } = p.args || {};
       if (!file) return { error: 'no file' };
-      const dest = file.startsWith('/') ? file : join(BRIDGE, file);
-      mkdirSync(dirname(dest), { recursive: true });
-      writeFileSync(dest, typeof content === 'string' ? content : JSON.stringify(content, null, 2));
-      return { written: dest };
+      const dest = resolveTarget(file, 'write');
+      if (dest.error) return { error: dest.error };
+      mkdirSync(dirname(dest.path), { recursive: true });
+      writeFileSync(dest.path, typeof content === 'string' ? content : JSON.stringify(content, null, 2));
+      return { written: dest.path };
     }
     case 'read-file': {
       const { file } = p.args || {};
-      const src = file.startsWith('/') ? file : join(BRIDGE, file);
-      if (!existsSync(src)) return { error: 'not found: ' + src };
-      return { content: readFileSync(src, 'utf8').slice(0, 4000) };
+      if (!file) return { error: 'no file' };
+      const src = resolveTarget(file, 'read');
+      if (src.error) return { error: src.error };
+      if (!existsSync(src.path)) return { error: 'not found: ' + src.path };
+      return { content: readFileSync(src.path, 'utf8').slice(0, 4000) };
     }
     // Back-compat node envelope: kept so old envelopes still route, but the desktop execution
     // path is now docs/CUA-EXECUTION.md (oc-cua.mjs over SSH + Cua Driver).
@@ -136,6 +202,10 @@ function innerTick() {
 
     if (task.status === 'running') continue;
     if (!['queued', undefined].includes(task.status)) { state.processed[taskId] = task.status; saveState(state); continue; }
+    if (ALLOW_REQUESTERS.length && !ALLOW_REQUESTERS.includes(task.requester)) {
+      log('skip ', taskId, ' requester not allowed: ' + task.requester);
+      state.processed[taskId] = 'denied'; saveState(state); continue;
+    }
 
     log('processing', taskId, task.payload?.kind || task.type);
     let result;

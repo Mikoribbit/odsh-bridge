@@ -32,7 +32,7 @@ Sec-WebSocket-Protocol: json
 Origin: http://openclaw:18789
 ```
 
-Gateway admission conditions (verified environment): `gateway.controlUi.allowedOrigins` must explicitly include the origin in use (previously allowed examples: `http://localhost:18789`, `http://openclaw:18789`, `http://172.18.x.x:18789`). ⚠️ Verify it yourself: this path is protected config — `config.patch` refuses to modify it; you must edit openclaw.json directly (back it up first) and restart the gateway process for it to take effect (reloadKind=restart, not hot reload). Optional: adding `172.18.0.0/16` to `autoApproveCidrs` skips per-device approval.
+Gateway admission conditions (verified environment): `gateway.controlUi.allowedOrigins` must explicitly include the origin in use (previously allowed examples: `http://localhost:18789`, `http://openclaw:18789`, `http://172.18.x.x:18789`). ⚠️ Verify it yourself: this path is protected config — `config.patch` refuses to modify it; you must edit openclaw.json directly (back it up first) and restart the gateway process for it to take effect (reloadKind=restart, not hot reload). ⚠️ Do NOT enable `autoApproveCidrs` on shared docker subnets: any container there could pair as an operator device. Prefer manual per-device approval. Also: without TLS (wss) in front of the gateway, gateway credentials and the signed connect claim cross the docker bridge in plaintext — keep the bridge network isolated or terminate TLS first.
 - zh: 要点：网关只放行 allowedOrigins 显式列出的 origin；该配置受保护，config.patch 拒绝修改，需直接编辑 openclaw.json 并重启网关（reloadKind=restart）生效。
 
 ### 2.2 Keys & Fingerprint

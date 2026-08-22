@@ -5,7 +5,7 @@
 # Safe to re-run; skips already-done work.
 #
 # Usage:
-#   ./scripts/setup-dsh.sh [--bridge /root/ODSH-bridge] [--host host.docker.internal] [--user miko]
+#   ./scripts/setup-dsh.sh [--bridge /root/ODSH-bridge] [--host host.docker.internal] [--user <windows-username>]
 #
 # Steps: 1) install ssh client   2) generate ed25519 key (idempotent)
 #        3) publish pubkey to the bridge   4) read windows-connect.json from bridge

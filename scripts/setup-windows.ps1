@@ -45,7 +45,15 @@ $cuaCandidates = @(
 $cuaExe = $cuaCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if(-not $cuaExe){
   Say 'Cua Driver not found - installing via official script (needs network)...'
-  try { irm https://cua.ai/driver/install.ps1 | iex; Say 'installer returned' } catch { Warn ('installer failed: '+$_.Exception.Message) }
+  try {
+    # SECURITY: download to a temp file instead of streaming straight into iex, so we can
+    # inspect/hash it. (Hash-pin for a specific release should be set here when you pin a version.)
+    $tmpInst = Join-Path $env:TEMP 'cua-driver-install.ps1'
+    Invoke-WebRequest -Uri 'https://cua.ai/driver/install.ps1' -OutFile $tmpInst
+    Say ('Downloaded installer to ' + $tmpInst + ' (len ' + (Get-Item $tmpInst).Length + '). Execute it now...')
+    & $tmpInst
+    Say 'installer returned'
+  } catch { Warn ('installer failed: '+$_.Exception.Message) }
   # re-detect after install
   $cuaExe = @(
     "$env:LOCALAPPDATA\Programs\Cua\cua-driver\bin\cua-driver.exe",

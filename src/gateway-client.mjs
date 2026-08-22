@@ -76,7 +76,7 @@ async function computeDeviceId(jwk) {
 // ---------------------------------------------------------------------------
 function wsSendFrame(sock, opcode, payloadBuf) {
   const payload = Buffer.from(payloadBuf);
-  const mk = Buffer.from([0x01, 0x02, 0x03, 0x04]);   // client mask (4 bytes, matching the verified environment)
+  const mk = crypto.randomBytes(4);   // per-frame random mask (RFC 6455 §8.1)
   const out = Buffer.from(payload);
   for (let i = 0; i < out.length; i++) out[i] ^= mk[i % 4]; // XOR-mask the payload
   const len = out.length;

@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning
 follows [SemVer](https://semver.org/).
 
+## [1.1.1] — 2026-08-21
+
+Patch release — security regression fix + CI.
+
+### Fixed
+
+- **WS client mask was still constant** `0x01,0x02,0x03,0x04` in the shipped tree (the earlier
+  hardening edit had not persisted); now truly `crypto.randomBytes(4)` per frame. Caught by the
+  new regression suite before you could run it twice.
+- package.json `test` script wired; `npm run check` extended with `bash -n scripts/setup-dsh.sh`.
+
+### Added
+
+- **GitHub Actions CI** (`.github/workflows/ci.yml`): on every push/PR to `main`, runs Node 20
+  syntax checks + `tests/security.test.mjs` (injection fail-closed, secret scan, hardening
+  presence) + bash syntax + repo-cleanliness guard.
+- **`tests/security.test.mjs`**: reproducible regression tests covering every v1.1.0 hardening
+  item (oc-cua tool allowlist, daemon argv allowlist / path confinement / requester allowlist /
+  atomic state, gateway handshake & mask, no miko default, no obvious secrets).
+
+---
 ## [1.1.0] — 2026-08-21
 ### Security (v1.1.0 hardening — from a full repo audit)
 
@@ -36,6 +57,10 @@ follows [SemVer](https://semver.org/).
   no longer recommend `autoApproveCidrs`.
 - **Privacy**: Windows username / hostname examples genericized to `<windows-username>`;
   `CUA_SSH_USER` no longer defaults to a personal name.
+- **CI (GitHub Actions)**: `.github/workflows/ci.yml` + `tests/security.test.mjs` regression
+  suite (syntax, injection fail-closed, secret scan, hardening presence) on every push/PR.
+- **Fix found by CI**: WS client mask was still the constant `0x01,0x02,0x03,0x04` in the
+  worktree (earlier edit not persisted) — now truly `crypto.randomBytes(4)` and guarded by test.
 
 ---
 

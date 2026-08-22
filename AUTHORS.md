@@ -7,7 +7,7 @@ between **DeepSeek Harness (DSH)** and **OpenClaw**.
 
 - **MikoRibbit** <mikoribbit@gmail.com>
   - Project owner, operator, and human decision-maker.
-  - Set up the docker `agent-mesh` network, the shared bridge (`H:/ODSH-bridge`),
+  - Set up the docker `agent-mesh` network, the shared bridge (`<bridge-host-dir>`),
     and the Discord collaboration channel.
 
 ## Contributor

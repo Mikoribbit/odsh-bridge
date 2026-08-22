@@ -1,12 +1,12 @@
 # ODSH Bridge — docker-compose snippet (bridge mount + agent-mesh network)
 #
 # Purpose: put both containers on the same agent-mesh network and mount the shared bridge into both sides
-#   (equivalent to the verified environment's H:/ODSH-bridge -> /root/ODSH-bridge). This is a snippet:
+#   (the bridge directory you created — see README §3.0.1; set ODSH_BRIDGE_HOST_DIR to its host path). This is a snippet:
 #   replace image/command with your actual images.
 #
 # ⚠️ verify yourself: image and command depend on your DSH / OpenClaw images (the verified environment used
 #   existing images; this snippet provides placeholders). The bridge host path can be overridden with the
-#   ODSH_BRIDGE_HOST_DIR environment variable (default `H:/ODSH-bridge`, Docker Desktop Windows style;
+#   ODSH_BRIDGE_HOST_DIR environment variable (default `./bridge`; set it to any host dir, e.g. `C:/ODSH-bridge` on Windows);
 #   pass an absolute path on Linux).
 #
 # Usage: docker compose -f docker-compose.snippet.yml up -d   (or merge into your main compose)
@@ -23,7 +23,7 @@ services:
     container_name: deepseek-harness
     networks: [agent-mesh]
     volumes:
-      - ${ODSH_BRIDGE_HOST_DIR:-H:/ODSH-bridge}:/root/ODSH-bridge    # shared bridge (identical on both sides)
+      - ${ODSH_BRIDGE_HOST_DIR:-./bridge}:/root/ODSH-bridge    # shared bridge (identical on both sides)
       - ./src:/opt/odsh-bridge/src:ro
       - ./.env:/opt/odsh-bridge/.env:ro
     # optional: keep the DSH container resident and host the daemon (command depends on your image entrypoint, ⚠️ verify yourself)
@@ -39,6 +39,6 @@ services:
     # Align them explicitly, e.g. user: "${UID}:${GID}" on both services, or chmod -R 770 the host bridge dir once.
     # user: "${UID}:${GID}"
     volumes:
-      - ${ODSH_BRIDGE_HOST_DIR:-H:/ODSH-bridge}:/root/ODSH-bridge
+      - ${ODSH_BRIDGE_HOST_DIR:-./bridge}:/root/ODSH-bridge
     # gateway listens on 18789; origin allowlist see docs/PROTOCOL.md 2.1 (allowedOrigins must list
     # http://openclaw:18789, http://localhost:18789, etc.)

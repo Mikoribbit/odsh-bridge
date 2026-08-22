@@ -108,7 +108,7 @@ cd odsh-bridge
 
 ```bash
 # 1. Make your bridge directory from the template (four zones)
-cp -r bridge-template /srv/odsh-bridge          # or H:/ODSH-bridge on Docker Desktop/Windows
+cp -r bridge-template /srv/odsh-bridge          # (Windows example: C:/ODSH-bridge, pick any host dir)
 
 # 2. Configure
 cp .env.example .env                             # fill OC_TOKEN, DISCORD_CHANNEL_ID etc.
@@ -132,7 +132,7 @@ docker compose up -d
 - Both containers on the same docker network (this repo's example name is `agent-mesh`), named
   `deepseek-harness` and `openclaw`; both must be able to ping the other container's name.
 - The shared bridge is mounted at the same absolute path inside both containers (default
-  `/root/ODSH-bridge`; host `H:/ODSH-bridge`, see `docker-compose.snippet.yml`).
+  `/root/ODSH-bridge`; the host path is yours (set `ODSH_BRIDGE_HOST_DIR`, e.g. `C:/ODSH-bridge` on Windows, see `docker-compose.snippet.yml`).
 - The OpenClaw gateway side is opened up (see `docs/PROTOCOL.md` §2.1):
   - `gateway.controlUi.allowedOrigins` explicitly includes the origin you will use
     (e.g. `http://openclaw:18789`); ⚠️ this path is a protected config — edit `openclaw.json` directly

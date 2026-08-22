@@ -12,7 +12,7 @@ Corresponds to `src/bridge-daemon.mjs` and the four-zone bridge at `/root/ODSH-b
 └── Openclaw-Workspace/    # [PRIVATE] OpenClaw-private: memory/summaries/dream-feed (DSH must not modify)
 ```
 
-Both containers mount it to the same host directory (verified environment: host `H:/ODSH-bridge` → in-container `/root/ODSH-bridge`, see docker-compose.snippet.yml).
+Both containers mount it to the same host directory (host path is operator-chosen and mounted to in-container `/root/ODSH-bridge`; see docker-compose.snippet.yml).
 
 ## 2. Envelope Format (Input/<taskId>.json)
 

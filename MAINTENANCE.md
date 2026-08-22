@@ -112,7 +112,7 @@
   the file ownership/umask written by one side blocks the other.
 - **Fix (verified)**: align the users explicitly — add `user: "${UID}:${GID}"`
   to **both** services in `docker-compose.snippet.yml`, or once on the host run
-  `chmod -R 770 /path/to/H:/ODSH-bridge` so both users can write. In our verified
+  `chmod -R 770 <bridge-host-dir>` so both users can write. In our verified
   environment both containers run as root (0:0), which is why it worked out of
   the box; plan for this if you switch to non-root.
 

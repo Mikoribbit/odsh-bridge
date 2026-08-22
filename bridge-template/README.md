@@ -1,6 +1,6 @@
 # ODSH Bridge - directory bridge (template)
 
-Copy this whole directory to your chosen host path (e.g. H:/ODSH-bridge or /srv/odsh-bridge),
+Copy this whole directory to your chosen host path (e.g. C:/ODSH-bridge on Windows or /srv/odsh-bridge on Linux, or any dir you prefer),
 then reference it in docker-compose.yml via ODSH_BRIDGE_HOST_DIR, or in your own compose.
 
 | Zone | Purpose | Owner |

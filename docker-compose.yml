@@ -6,7 +6,7 @@
 #   1. mkdir bridge && cp -r bridge-template/ bridge/   # or use your own bridge path
 #   2. cp .env.example .env  &&  fill OC_TOKEN etc.
 #   3. Set ODSH_BRIDGE_HOST_DIR to the host path of your bridge dir
-#      (Windows/Docker Desktop:  H:/ODSH-bridge  style;  Linux: /srv/odsh-bridge)
+#      (Windows/Docker Desktop:  <bridge-host-dir>  (e.g. Windows: C:/ODSH-bridge …; Linux: /srv/odsh-bridge))
 #   4. docker compose up -d
 #   5. node src/oc-client.mjs connect  (DSH side) - approve the deviceId in the Control UI
 #
@@ -35,7 +35,7 @@ services:
     ports:
       - "18789:18789"                      # gateway control UI / WS
     volumes:
-      - "${ODSH_BRIDGE_HOST_DIR:-H:/ODSH-bridge}:/root/ODSH-bridge"
+      - "${ODSH_BRIDGE_HOST_DIR:-./bridge}:/root/ODSH-bridge"
     restart: unless-stopped
 
   # ---------- DeepSeek Harness: execution layer (this repo's scripts) ----------
@@ -48,7 +48,7 @@ services:
     ports:
       - "3080:3080"                        # DSH web GUI (set to 127.0.0.1:3080:3080 to bind loopback)
     volumes:
-      - "${ODSH_BRIDGE_HOST_DIR:-H:/ODSH-bridge}:/root/ODSH-bridge"
+      - "${ODSH_BRIDGE_HOST_DIR:-./bridge}:/root/ODSH-bridge"
       - ./src:/opt/odsh-bridge/src:ro
       - ./.env:/opt/odsh-bridge/.env:ro
     restart: unless-stopped

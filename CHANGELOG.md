@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning
 follows [SemVer](https://semver.org/).
 
+## [1.1.2] — 2026-08-21
+
+Patch release — documentation/example correctness (no functional change).
+
+### Fixed
+
+- Remove assumptions that the bridge host path is drive "H:": defaults in compose templates
+  now use `./bridge` / `<bridge-host-dir>`; README/BRIDGE-SPEC/AUTHORS/MAINTENANCE updated to
+  neutral examples (`C:/ODSH-bridge` on Windows, `/srv/odsh-bridge` on Linux). `setup-windows.ps1`
+  still auto-probes common locations (H:/, C:/, user profile) — that is intentional.
+
+---
 ## [1.1.1] — 2026-08-21
 
 Patch release — security regression fix + CI.

@@ -107,7 +107,7 @@ cd odsh-bridge
 
 ```bash
 # 1. 从模板生成你的桥目录（四区）
-cp -r bridge-template /srv/odsh-bridge          # Docker Desktop/Windows 可用 H:/ODSH-bridge
+cp -r bridge-template /srv/odsh-bridge          # （Windows 示例：C:/ODSH-bridge，任意目录均可）
 
 # 2. 配置
 cp .env.example .env                             # 填 OC_TOKEN、DISCORD_CHANNEL_ID 等
@@ -129,7 +129,7 @@ docker compose up -d
   没有 Docker 就跑不了同样的桥；见 §3.0.1 的 compose + `bridge-template` 开箱包。
 - 两个容器位于同一 docker 网络（本仓库示例名 `agent-mesh`），名字分别为
   `deepseek-harness` 与 `openclaw`；两者都能 ping 到对方容器名。
-- 共享桥在两侧容器挂载到同一绝对路径（默认 `/root/ODSH-bridge`；宿主 `H:/ODSH-bridge`，
+- 共享桥在两侧容器挂载到同一绝对路径（容器内 `/root/ODSH-bridge`；宿主路径由你定，
   见 `docker-compose.snippet.yml`）。
 - OpenClaw 网关侧需要放行（见 `docs/PROTOCOL.md` §2.1）：
   - `gateway.controlUi.allowedOrigins` 显式包含你要用的 Origin（如 `http://openclaw:18789`）；

@@ -125,6 +125,10 @@ docker compose up -d
 
 ### Prerequisites (environment prep, verified)
 
+- **Docker** (Docker Desktop on Windows/macOS, or Docker Engine + compose on Linux; Podman with
+  compose-compatible flags also works for the bridge core) — the ODSH Bridge is a two-container idea:
+  OpenClaw (brain/gateway) + DeepSeek Harness (DSH, execution layer) on one docker network.
+  Without Docker you cannot run the same bridge; see §3.0.1 for the compose + `bridge-template` pack.
 - Both containers on the same docker network (this repo's example name is `agent-mesh`), named
   `deepseek-harness` and `openclaw`; both must be able to ping the other container's name.
 - The shared bridge is mounted at the same absolute path inside both containers (default

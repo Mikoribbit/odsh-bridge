@@ -123,6 +123,10 @@ docker compose up -d
 
 ### 前置条件（已验证）
 
+- **Docker**（Windows/macOS 用 Docker Desktop；Linux 用 Docker Engine + compose；Podman 带
+  compose 兼容参数也能跑桥核心）——ODSH Bridge 本质是"两个容器"的构想：
+  OpenClaw（大脑/网关）+ DeepSeek Harness（DSH，执行层）在同一 docker 网络。
+  没有 Docker 就跑不了同样的桥；见 §3.0.1 的 compose + `bridge-template` 开箱包。
 - 两个容器位于同一 docker 网络（本仓库示例名 `agent-mesh`），名字分别为
   `deepseek-harness` 与 `openclaw`；两者都能 ping 到对方容器名。
 - 共享桥在两侧容器挂载到同一绝对路径（默认 `/root/ODSH-bridge`；宿主 `H:/ODSH-bridge`，

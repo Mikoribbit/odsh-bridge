@@ -1,3 +1,33 @@
+## [1.3.1] - 2026-08-26
+
+Patch release - **resilience & observability**. Adds a dead-letter queue for bad
+envelopes, cross-container trace IDs, and a `purge` subcommand to dshtrigger.
+
+### Added
+
+- **Dead-letter queue (DLQ)** in `src/bridge-daemon.mjs`: envelopes that are
+  **unparsable** or that **throw an uncaught exception** during processing are moved
+  atomically out of `Input/` into `Input/failed/`, with a companion `<taskId>.error.json`
+  report (raw payload, error message/stack, `failedAt`, original `taskId`). This stops
+  bad data from being retried every scan and wedging the scheduler. Normal (`{ error }`)
+  failures are untouched.
+- **Cross-container trace IDs**: the daemon passes an inbound `trace_id` through, or mints a
+  fresh one; records `span_id` (this hop) and `parent_span_id` (previous hop, else null).
+  Every result file now carries a `trace: { trace_id, span_id, parent_span_id }` block.
+  Old envelopes without these fields remain fully compatible. Documented in
+  `docs/BRIDGE-SPEC.md` (opt-in, optional fields).
+- **`dshtrigger purge`** subcommand: `node src/dshtrigger.mjs purge [--days N] [--dry-run]
+  [--failed-only]` - reuses `bridge-cleanup`'s retention/delete logic to prune `Output/`
+  and `Input/failed/` (default 7 days); `--dry-run` previews, `--failed-only` restricts to
+  the DLQ. `.state`, `README`, and dotfiles are always protected.
+- `src/bridge-cleanup.mjs` now exports a reusable `cleanDir()` helper (CLI behavior kept).
+
+### Changed
+
+- `dshtrigger status` now reports the live dead-letter count (`Input/failed`) as
+  `deadLetters`.
+
+---
 ## [1.3.0] — 2026-08-26
 
 Minor release — **deployment & onboarding overhaul**. Everything now centers on

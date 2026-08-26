@@ -3,13 +3,16 @@
 // 用法:
 //   node dshtrigger.mjs daemon [--interval-ms 5000] [--notify]
 //   node dshtrigger.mjs send [--kind X] [--text ".."] [--timeout 60000] [--notify]
-//   node dshtrigger.mjs status   (includes a live daemon health check)
+//   node dshtrigger.mjs status   (includes a live daemon health check + dead-letter count)
+//   node dshtrigger.mjs purge [--days N] [--dry-run] [--failed-only]
 //   node dshtrigger.mjs once
 import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawn } from 'node:child_process';
 const __dirname = dirname(fileURLToPath(import.meta.url));
+// reuse the retention/delete logic from bridge-cleanup.mjs (pure helper; no side effects on import)
+import { cleanDir } from './bridge-cleanup.mjs';
 
 const BRIDGE = process.env.BRIDGE_PATH || '/root/ODSH-bridge';
 const INPUT = join(BRIDGE, 'Input');
@@ -51,6 +54,7 @@ function statusObj() {
     schema: 'odsh-status/v1', at: new Date().toISOString(),
     inputTasks: readdirSync(INPUT).filter(f => /^T-.*\.json$/.test(f)),
     outputResults: readdirSync(OUTPUT).filter(f => /_result\.json$/.test(f)),
+    deadLetters: (() => { const fd = join(INPUT, 'failed'); return existsSync(fd) ? readdirSync(fd).length : 0; })(),
     processed: Object.keys(s.processed || {}).length,
     health: daemonAlive(),
     scripts: { daemon: !!DAEMON && existsSync(DAEMON), send: !!SENDS && existsSync(SENDS), cua: !!OCCUA && existsSync(OCCUA) },
@@ -104,6 +108,27 @@ if (MODE === 'daemon') {
 } else if (MODE === 'once') {
   if (!DAEMON || !existsSync(DAEMON)) { console.error('daemon script not found'); process.exit(2); }
   try { log((execFileSync(process.execPath, [DAEMON, '--once'], { timeout: 30000, encoding: 'utf8' })).trim()); } catch (e) { console.error('once err', e.message); }
+  process.exit(0);
+} else if (MODE === 'purge') {
+  // 死信/过期文件清理:default 清理 Output/ 与 Input/failed/ 里超过 N 天(默认 7)的文件。
+  // --dry-run 只预览不删;--failed-only 只清理 DLQ(Input/failed/)。
+  // 复用 bridge-cleanup.mjs 的保留/删除逻辑(.state、README、dotfiles 自动受保护)。
+  const days = Number(arg('--days', '7')) || 7;
+  const dryRun = flag('--dry-run');
+  const failedOnly = flag('--failed-only');
+  const targets = failedOnly
+    ? [['DLQ (Input/failed)', join(INPUT, 'failed')]]
+    : [['Output', OUTPUT], ['DLQ (Input/failed)', join(INPUT, 'failed')]];
+  let removed = 0;
+  for (const [nm, dir] of targets) {
+    const n = cleanDir(dir, { days, dryRun, label: nm });
+    removed += n;
+    if (dryRun) console.log('[dry] ' + nm + ': ' + n + ' stale file(s) would be removed (>' + days + 'd)');
+    else console.log('[done] ' + nm + ': removed ' + n + ' stale file(s) (>' + days + 'd)');
+    if (n === 0) console.log('  (note: .state / README / dotfiles under ' + nm + ' are always protected)');
+  }
+  if (dryRun) console.log('[dry-run complete] would remove ' + removed + ' file(s)');
+  else console.log('[purge complete] removed ' + removed + ' file(s)');
   process.exit(0);
 } else {
   console.error('unknown mode', MODE); process.exit(2);

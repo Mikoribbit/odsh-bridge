@@ -25,6 +25,9 @@ Both containers mount it to the same host directory (host path is operator-chose
   "requester": "dsh | openclaw | human",
   "target": "dsh | openclaw | both",   // (windows-node kept reserved in daemon for back-compat; desktop execution goes through the Cua channel, see docs/CUA-EXECUTION.md)
   "createdMs": 1787249900000,
+  "trace_id": "1ac9e2f4-... (optional)",
+  "parent_span_id": "f3e18c7b-... (optional, previous hop's span)",
+  "span_id": "5c2a0d1e-... (optional, this hop's span)",
   "expiresMs": 1787336000000,
   "payload": { "kind": "echo", "text": "..." },
   "context": { "channel": "<discordChannelId>", "sessionKey": "<agentSessionKey>" },
@@ -32,7 +35,7 @@ Both containers mount it to the same host directory (host path is operator-chose
 }
 ```
 
-Required: `taskId / type / status / requester / target / createdMs / payload`; `expiresMs / context / result` optional.
+Required: `taskId / type / status / requester / target / createdMs / payload`; `expiresMs / context / result / trace_id / span_id / parent_span_id` optional. The trace fields are optional cross-container tracing extensions (see §4.1) and never required for old envelopes.
 
 > ⚠️ **target routing (v1.2.1+)** — the DSH-side daemon (`dshtrigger daemon`) only
 > consumes envelopes whose `target` is `dsh` (or unset). Envelopes with
@@ -66,6 +69,7 @@ Advancement rules:
   "status": "done | failed | cancelled",
   "finishedMs": 1787249903000,
   "by": "dsh | openclaw",
+  "trace": { "trace_id": "...", "span_id": "...", "parent_span_id": null },
   "payload": { "...": "..." },
   "human": "Task T-260820-01 complete",
   "error": null
@@ -73,6 +77,37 @@ Advancement rules:
 ```
 
 `human` is a human-readable summary that can be posted directly to a channel.
+
+### 4.1 Cross-container tracing (optional, 1.3.1+)
+
+The daemon keeps a lightweight trace through each envelope so a call chain can be
+reconstructed across containers. Result files carry an extra `trace` object (three
+fields, all optional):
+
+- `trace_id` - a `crypto.randomUUID()` minted at the first hop and **passed through**
+  unchanged on every later hop (an inbound envelope's `trace_id` is preserved verbatim).
+- `span_id` - a fresh UUID generated on **this** hop (this container's span).
+- `parent_span_id` - the previous hop's span: the inbound envelope's `parent_span_id`,
+  else its `span_id`, else `null`.
+
+Old envelopes lacking these fields remain fully compatible: the daemon synthesizes
+`trace_id`/`span_id` and leaves `parent_span_id` null. No required envelope field is
+touched, so existing producers are unaffected.
+### 4.2 Dead-letter queue (DLQ) 1.3.1+
+
+An envelope that is **unparsable** or **throws an uncaught exception** while being
+processed is a defect, not a regular task failure. To stop it being re-tried every
+scan (which would wedge the scheduler), the daemon atomically moves the original
+envelope into `Input/failed/` and writes a companion `<taskId>.error.json` report
+(schema `odsh-dlq/v1`) with `failedAt`, the original `taskId`, the error
+`message`/`stack`, and the original payload. Both writes use the `.tmp` then
+`rename` atomic-write discipline.
+
+Expected failures - a payload handler that **returns** `{ error: ... }` (for example a
+`run-command` exiting non-zero) - are NOT dead-lettered; they still produce a normal
+`failed` result in `Output/`. Only parse failures and uncaught exceptions enter the
+DLQ. `dshtrigger purge --failed-only` prunes it and `dshtrigger status` reports the
+live dead-letter count.
 
 ## 5. Naming & Conflict Avoidance
 

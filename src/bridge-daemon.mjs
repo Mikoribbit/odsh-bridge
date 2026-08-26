@@ -3,7 +3,8 @@
 // Watches Input/ for new T-*.json envelopes, executes supported kinds,
 // writes Output/<taskId>_result.json, optionally notifies the Discord channel.
 // Usage: node dsh_bridge.mjs [--once] [--interval-ms N] [--notify]
-import { readdirSync, readFileSync, writeFileSync, existsSync, renameSync, mkdirSync, realpathSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, existsSync, renameSync, mkdirSync, realpathSync, unlinkSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { join, basename, dirname, resolve, isAbsolute } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
@@ -16,6 +17,7 @@ const ALLOW_REQUESTERS = (process.env.BRIDGE_ALLOW_REQUESTERS || '').split(',').
 const INPUT = join(BRIDGE, 'Input');
 const OUTPUT = join(BRIDGE, 'Output');
 const STATE = join(INPUT, '.state');
+const FAILED_DLQ = join(INPUT, 'failed'); // dead-letter queue: bad envelopes (unparsable / threw) land here instead of wedging the scheduler
 const NOTIFY = process.argv.includes('--notify');
 const ONCE = process.argv.includes('--once');
 const idxi = process.argv.indexOf('--interval-ms');
@@ -49,6 +51,52 @@ function saveState(s) {
   const tmp = f + '.tmp';
   writeFileSync(tmp, JSON.stringify(s, null, 2), { mode: 0o600 });
   renameSync(tmp, f);
+}
+
+// ---- dead-letter queue (DLQ) ----
+// Bad envelopes — ones that could not be parsed or threw an uncaught exception
+// while processing — must not sit in Input/ and retry forever. They are moved
+// atomically into Input/failed/ with a <taskId>.error.json report. Normal,
+// expected failures (a payload handler returning { error: ... }) are NOT DLQ'd;
+// they produce a regular failed result like before.
+function dlqEnvelope(taskId, fileName, raw, errInfo) {
+  const failedDir = FAILED_DLQ;
+  mkdirSync(failedDir, { recursive: true });
+  const orig = join(INPUT, fileName);
+  const body = typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2);
+  // preserve the original envelope inside failed/ with its exact name (collision-safe)
+  let dest = join(failedDir, fileName);
+  if (existsSync(dest)) { dest = join(failedDir, basename(fileName, '.json') + '-' + Date.now() + '.json'); }
+  writeFileSync(dest + '.tmp', body);
+  renameSync(dest + '.tmp', dest);
+  // companion error report
+  let parsed = null;
+  try { parsed = JSON.parse(body); } catch { parsed = null; }
+  const report = {
+    schema: 'odsh-dlq/v1', taskId,
+    failedAt: new Date().toISOString(),
+    originalFile: fileName,
+    error: { code: errInfo.code || 'exception', message: errInfo.message || String(errInfo), stack: errInfo.stack || null },
+    payload: parsed !== null ? parsed : { raw: body.slice(0, 16000) },
+  };
+  const reportPath = join(failedDir, taskId + '.error.json');
+  writeFileSync(reportPath + '.tmp', JSON.stringify(report, null, 2));
+  renameSync(reportPath + '.tmp', reportPath);
+  // remove the original from Input/ so the scheduler stops re-watching it
+  try { unlinkSync(orig); } catch {}
+  log('DLQ', fileName, '->', dest.split('/').pop());
+}
+
+// Trace linkage (cross-container): pass through an inbound trace_id, else mint a
+// fresh one. span_id is always a fresh UUID for this hop; parent_span_id records
+// the previous hop's span (the inbound envelope's parent_span_id, else its span_id,
+// else null). Old envelopes without any trace fields stay fully compatible.
+function resolveTrace(task) {
+  const trace_id = (typeof task.trace_id === 'string' && task.trace_id) || randomUUID();
+  const parent_span_id = (typeof task.parent_span_id === 'string' && task.parent_span_id)
+    || (typeof task.span_id === 'string' && task.span_id) || null;
+  const span_id = randomUUID();
+  return { trace_id, span_id, parent_span_id };
 }
 
 function envelopeCandidates() {
@@ -196,9 +244,17 @@ function innerTick() {
   for (const f of envelopeCandidates()) {
     const taskId = basename(f, '.json');
     if (state.processed[taskId]) continue;
+    const abs = join(INPUT, f);
+    let raw;
+    try { raw = readFileSync(abs, 'utf8'); } catch (e) { log('cannot read', f, e.message); continue; }
     let task;
-    try { task = JSON.parse(readFileSync(join(INPUT, f), 'utf8')); }
-    catch (e) { log('skip unparsable', f, e.message); continue; }
+    try { task = JSON.parse(raw); }
+    catch (e) {
+      // truly bad data (unparsable): fail-closed into the DLQ instead of retrying forever
+      log('unparsable input -> DLQ', f, e.message);
+      dlqEnvelope(taskId, f, raw, { code: 'parse_error', message: e.message, stack: e.stack });
+      state.processed[taskId] = 'dead'; saveState(state); continue;
+    }
 
     if (task.status === 'running') continue;
     if (!['queued', undefined].includes(task.status)) { state.processed[taskId] = task.status; saveState(state); continue; }
@@ -208,6 +264,7 @@ function innerTick() {
     }
 
     log('processing', taskId, task.payload?.kind || task.type);
+    const trace = resolveTrace(task);
     let result;
     try {
       const r = executePayload(task);
@@ -215,12 +272,17 @@ function innerTick() {
         schema: 'odsh-result/v1', taskId,
         status: r.error ? 'failed' : 'done',
         finishedMs: Date.now(), by: 'dsh',
+        trace: { trace_id: trace.trace_id, span_id: trace.span_id, parent_span_id: trace.parent_span_id },
         payload: r.error ? { error: r.error } : r,
         human: r.error ? `task ${taskId} failed: ${r.error}` : `task ${taskId} done`,
         error: r.error ? { code: 'exec_failed', message: r.error } : null
       };
     } catch (e) {
-      result = { schema: 'odsh-result/v1', taskId, status: 'failed', finishedMs: Date.now(), by: 'dsh', payload: {}, human: `exception: ${e.message}`, error: { code: 'exception', message: e.message } };
+      // uncaught exception while executing — a bug/bad payload, not a normal failed result.
+      // Quarantine into the DLQ and do NOT emit a regular "failed" result.
+      log('processing exception -> DLQ', taskId, e.message);
+      dlqEnvelope(taskId, f, raw, { code: 'exception', message: e.message, stack: e.stack });
+      state.processed[taskId] = 'dead'; saveState(state); continue;
     }
     const tmp = join(OUTPUT, taskId + '_result.json.tmp');
     const fin = join(OUTPUT, taskId + '_result.json');

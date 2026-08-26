@@ -1,3 +1,16 @@
+## [1.3.6] - 2026-08-26
+
+Patch release - **skill copy & license alignment for ClawHub publish**.
+
+### Changed
+
+- **`skills/odsh-interop/SKILL.md`**: rewrote the short `description` (used by ClawHub
+  cards/search/previews) to a tighter 70-word summary that surfaces the DSH routing
+  decision, bridge envelopes, and the optional SQLite audit ledger (`dsh.db`).
+- **`license` aligned to `MIT-0`** in the frontmatter — matches the license ClawHub
+  applied when the skill was published at `clawhub.ai/mikoribbit/skills/odsh-interop`.
+
+---
 ## [1.3.5] - 2026-08-26
 
 Patch release - **ClawHub publishing readiness for odsh-interop skill**.

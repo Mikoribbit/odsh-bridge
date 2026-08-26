@@ -1,13 +1,15 @@
 # 集成方式
 
-## 6. 集成方式
+## 1. 集成方式
 
 ### A. 独立 CLI / 守护进程（推荐，已验证形态）
 
 - 零构建、零 npm 依赖，直接 `node src/xxx.mjs` 运行；`.env` 由 `src/env.mjs` 自动加载。
 - 连接统一经 `safeClose()`（`gateway-client.mjs`）：新版 `node:net` ESM Socket 只有
   `destroy()/resetAndDestroy()`、没有 `.close()`；见 `gateway-client.mjs` 内注释。
-- 守护进程长驻：`node src/bridge-daemon.mjs --notify --interval-ms 5000`（可用 systemd/supervisor 托管）。
+- **自启守护进程（v1.2+）**：DSH 容器经 `scripts/dsh-entrypoint.sh` → `src/dshtrigger.mjs daemon`
+  自动拉起桥守护（自愈 supervisor，子进程崩溃自动重启）；正常启动无需手动 `node`。
+  统一入口 `node src/dshtrigger.mjs daemon|send|status|once`，`status` 会报告守护实时健康度。
 
 ### B. 挂载进 DSH 作为 Cordis 插件（⚠️ 未经产品环境验证）
 

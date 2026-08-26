@@ -1,6 +1,6 @@
 # Configuration & Directory Structure
 
-## 5. Directory structure
+## Directory structure
 
 ```
 plugin-release/

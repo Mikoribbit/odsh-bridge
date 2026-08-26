@@ -1,6 +1,6 @@
 # Operations: Cua Desktop, Security, Troubleshooting
 
-## 7. Windows desktop execution (Cua Driver)
+## 1. Windows desktop execution (Cua Driver)
 
 See **`CUA-EXECUTION.md`** for the full guide. Summary:
 
@@ -13,7 +13,7 @@ See **`CUA-EXECUTION.md`** for the full guide. Summary:
 
 ---
 
-## 8. Security notes
+## 2. Security notes
 
 1. **Never commit tokens**: `OC_TOKEN` lives only in `.env` (gitignored); everything in the repo's
    `.env.example` is a placeholder.
@@ -32,7 +32,7 @@ See **`CUA-EXECUTION.md`** for the full guide. Summary:
 
 ---
 
-## 9. Troubleshooting (common failures)
+## 3. Troubleshooting (common failures)
 
 | Symptom | Cause | Fix |
 |---|---|---|

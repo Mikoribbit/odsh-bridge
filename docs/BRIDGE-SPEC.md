@@ -34,6 +34,13 @@ Both containers mount it to the same host directory (host path is operator-chose
 
 Required: `taskId / type / status / requester / target / createdMs / payload`; `expiresMs / context / result` optional.
 
+> ⚠️ **target routing (v1.2.1+)** — the DSH-side daemon (`dshtrigger daemon`) only
+> consumes envelopes whose `target` is `dsh` (or unset). Envelopes with
+> `target: openclaw` are left in `Input/` untouched (marked deferred) so an
+> OpenClaw-side consumer can pick them up — DSH never eats OpenClaw's mail. This
+> makes the bridge symmetric: DSH avoids clobbering OpenClaw-bound tasks. An
+> `OpenClaw`-side watcher is what consumes those.
+
 ## 3. State Machine
 
 ```

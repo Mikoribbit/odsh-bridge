@@ -71,6 +71,12 @@ hotkey, app launch — focus-safe, over SSH to the host. So:
 - Anything needing final human judgement — hold and ask the operator.
 - Tiny lookups you can do in one call — more costly to relay than to just do.
 
+> ⚠️ **Target routing** — mark the envelope `target` correctly: a `T-*.json` with
+> `target: dsh` is consumed by the DSH daemon automatically; `target: openclaw` is
+> left in `Input/` for an OpenClaw-side consumer (DSH's daemon never reads OpenClaw's
+> mail). If it is a task for DSH, set `target: dsh` (or omit it); only set
+> `target: openclaw` for something you yourself will pick up.
+
 ## Collaboration channels (bridge zones)
 
 | Path | Purpose |

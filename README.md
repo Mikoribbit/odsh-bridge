@@ -93,6 +93,32 @@ There are three data flows:
     `kill_app`, `click/double_click/right_click/hotkey/type/scroll`, `list_apps`, `list_windows` …
 
 
+---
+
+## 3. Deploy in minutes
+
+Requires: **Docker** + two images — OpenClaw (official `openclaw/openclaw:latest`) and DSH
+(no public image; build `deepseek-harness:local` from the [DeepSeek Harness repo](https://github.com/deepseek-ai/deepseek-harness)).
+
+```bash
+# 1. Clone, then scaffold the bridge with the interactive wizard
+git clone https://github.com/Mikoribbit/odsh-bridge.git && cd odsh-bridge
+chmod +x scripts/new-bridge.sh
+./scripts/new-bridge.sh            # visual prompts; press Enter to keep defaults
+
+# 2. Bring up OpenClaw + DSH (bridge daemon auto-starts inside DSH)
+docker compose up -d              # uses the generated docker-compose.yaml
+
+# 3. Pair once, then it just works
+node src/oc-client.mjs connect    # approve the deviceId in the OpenClaw Control UI
+
+# (optional) verify daemon health + a round-trip
+node src/dshtrigger.mjs status
+node src/dshtrigger.mjs send --kind echo --text "hello"
+```
+
+Full walkthrough, config, and optional Windows-desktop (Cua) setup: **docs/QUICKSTART.md**.
+
 ## Documentation (split)
 
 To keep this page short, the deep-dive sections moved into their own pages:
@@ -120,7 +146,7 @@ If this project helps you, consider supporting its maintainer:
 
 ---
 
-## 3. Docs quick index (one-liner)
+## 4. Docs quick index (one-liner)
 
 - **New to ODSH Bridge?** → start with [Quick Start](docs/QUICKSTART.md).
 - **Anything about config/paths?** → [Configuration](docs/CONFIGURATION.md).
@@ -128,7 +154,7 @@ If this project helps you, consider supporting its maintainer:
 
 ---
 
-## 11. Credits
+## 5. Credits
 
 - **Cua** — this project's Windows desktop execution layer is powered by
   [Cua Driver](https://github.com/trycua/cua) (by the trycua team). Huge thanks for an open, cross-platform,

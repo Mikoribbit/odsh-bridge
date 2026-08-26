@@ -93,6 +93,32 @@
 
 ---
 
+---
+
+## 3. 部署（几分钟搞定）
+
+前置：**Docker** + 两张镜像——OpenClaw（官方 `openclaw/openclaw:latest`）与 DSH
+（无公开镜像；从 [DeepSeek Harness 仓库](https://github.com/deepseek-ai/deepseek-harness) 自建 `deepseek-harness:local`）。
+
+```bash
+# 1. 克隆，然后用交互式向导生成桥目录
+git clone https://github.com/Mikoribbit/odsh-bridge.git && cd odsh-bridge
+chmod +x scripts/new-bridge.sh
+./scripts/new-bridge.sh            # 可视化提示；回车保留默认
+
+# 2. 拉起 OpenClaw + DSH（DSH 内自动启动桥守护进程）
+docker compose up -d              # 使用生成的 docker-compose.yaml
+
+# 3. 配对一次，之后即开即用
+node src/oc-client.mjs connect    # 在 OpenClaw 控制台批准 deviceId
+
+# （可选）验证守护健康 + 一趟往返
+node src/dshtrigger.mjs status
+node src/dshtrigger.mjs send --kind echo --text "hello"
+```
+
+完整逐步、配置与可选 Windows 桌面（Cua）：**docs/QUICKSTART.md**。
+
 ## 文档（已拆分）
 
 为了缩短本页，深挖内容移到了独立页面：

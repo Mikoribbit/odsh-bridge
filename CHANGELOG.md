@@ -1,23 +1,19 @@
-## [1.3.3] - 2026-08-26
+## [1.3.4] - 2026-08-26
 
-Patch release - **SQLite store robustness**.
-
-### Fixed
-
-- **`src/sqlite-store.mjs`**: `recordEnvelope` now normalizes the three trace columns
-  (`trace_id`/`span_id`/`parent_span_id`) with `?? null`, so a trace object that
-  *omits* a key no longer binds `undefined` (which made node:sqlite `run()` throw and
-  silently drop the whole envelope from audit). Missing keys are recorded as `NULL`.
+Patch release - **OpenClaw skill v4: read-only SQLite ledger**.
 
 ### Added
 
-- **daemon resilience**: `src/bridge-daemon.mjs` logs stray `unhandledRejection` /
-  `uncaughtException` instead of crashing the long-lived daemon.
-- **SQLite smoke test** in `tests/security.test.mjs`: opens a temp store on Node >=22.5,
-  inserts envelopes and asserts rows + the trace-missing-parent regression guard.
+- **`skills/odsh-interop/SKILL.md` → v4**: new "Optional SQLite audit ledger (read-only)"
+  section. Teaches the OpenClaw agent to read the optional DSH AI script audit ledger
+  (`<BRIDGE>/DSH-Workspace/dsh.db`, written by v1.3.2+) directly with Node built-in
+  `node:sqlite` (readOnly) or Python stdlib: `dsh_bridge_stats` overview, recent tasks,
+  failures, per-task lifecycle, and cross-hop trace lookup.
+- **Read-only contract documented**: never INSERT/UPDATE/DROP in DSH-Workspace; if
+  `dsh.db` is missing/errors, fall back to scanning `Output/*_result.json`; the JSON
+  file store remains authoritative.
 
 ---
-
 ## [1.3.2] — 2026-08-26
 
 Minor release — **optional SQLite audit side-store**.

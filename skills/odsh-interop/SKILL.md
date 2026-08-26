@@ -1,7 +1,7 @@
 ---
 name: odsh-interop
 description: ODSH Bridge cross-container collaboration protocol — how the OpenClaw agent routes tasks between itself and a DeepSeek Harness (DSH) execution layer by task weight and predicted token cost: task envelopes, bridge zones, notification channel rules
-version: 3
+version: 4
 author: odsh-bridge project
 when_to_use: for every incoming operator request, decide whether to handle it yourself or relay it to the DSH execution layer; then use the bridge envelopes when relaying. DSH runs a self-starting bridge daemon, so it is always ready to receive and execute relayed tasks.
 ---
@@ -165,6 +165,46 @@ Since v1.2, the DSH container auto-starts the bridge daemon at boot
 continuously watching `Input/` and will pick up any `T-*.json` envelope you drop —
 no operator needs to start anything. If a result does not arrive, check that the DSH
 container is running and the bridge mount is shared; a restart re-arms the daemon automatically.
+
+
+## Optional SQLite audit ledger (read-only; v1.3.2+)
+
+When the DSH bridge runs on **Node >=22.5** (built-in `node:sqlite`) with `BRIDGE_SQLITE=1` in `.env`, the DSH daemon mirrors every processed envelope into one lightweight file: **`<BRIDGE>/DSH-Workspace/dsh.db`**. This is optional, additive and fail-soft — if it is absent (old Node, or disabled), the JSON file store stays the source of truth.
+
+You may **READ** this ledger directly to answer questions about bridge health/stats. It is **read-only for you** — never write to `DSH-Workspace/` (DSH owns that zone).
+
+### Schema
+
+| table / view | purpose |
+|---|---|
+| `dsh_envelopes` | one row per envelope: taskId, type, status, requester, target, createdMs / expiresMs / finishedMs, generated `duration` (= finishedMs - createdMs), trace_id / span_id / parent_span_id, raw_envelope |
+| `dsh_events` | status-transition audit log (id, taskId, fromStatus, toStatus, timestamp) |
+| `dsh_errors` | failed-task detail (taskId, error, traceback, timestamp) |
+| `dsh_bridge_stats` | view — total_tasks, completed, failed, running, first_created, last_finished |
+
+### Read it (zero extra deps — Node built-in)
+
+```
+<BRIDGE>=(the shared mount path; default /root/ODSH-bridge)
+node --input-type=module -e "import('node:sqlite').then(({DatabaseSync})=>{const db=new DatabaseSync('<BRIDGE>/DSH-Workspace/dsh.db',{readOnly:true});console.log(db.prepare('SELECT * FROM dsh_bridge_stats').get());db.close();}).catch(()=>console.log('dsh.db not available - fall back to Output/*_result.json'))"
+```
+
+If you only have Python, the stdlib works: `python3 -c "import sqlite3; for r in sqlite3.connect('<BRIDGE>/DSH-Workspace/dsh.db').execute('SELECT * FROM dsh_bridge_stats'): print(r)"`. Prefer Node (`node:sqlite`) when available.
+
+### Common read-only queries
+
+- **Overview:** `SELECT * FROM dsh_bridge_stats;`
+- **Recent tasks:** `SELECT taskId,status,duration,datetime(createdMs/1000,'unixepoch') AS created FROM dsh_envelopes ORDER BY createdMs DESC LIMIT 15;`
+- **Failures:** join `dsh_envelopes` with `dsh_errors` on taskId where `status='failed'`.
+- **Lifecycle of one task:** `SELECT fromStatus,toStatus,timestamp FROM dsh_events WHERE taskId='T-YYMMDD-XX' ORDER BY id;`
+- **Trace across hops:** `SELECT taskId,span_id,parent_span_id,status FROM dsh_envelopes WHERE trace_id='...';`
+
+### Guardrails
+
+- Always open **`readOnly`**; never `INSERT`/`UPDATE`/`DROP` in `DSH-Workspace/`.
+- `duration` is `NULL` when `finishedMs` is empty (still queued/running) — treat NULL, not 0.
+- If `dsh.db` is missing or the query throws, **fall back to scanning `Output/*_result.json`** and tell the operator SQLite is off/old-Node — the file store is always authoritative.
+- For heavy or uncertain aggregation, relay to DSH (see routing) rather than hand-writing complex SQL yourself.
 
 ## Notes
 

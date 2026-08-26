@@ -156,6 +156,9 @@ If this project helps you, consider supporting its maintainer:
 
 ## 5. Credits
 
+- **odsh-interop (ClawHub)** — the OpenClaw-side skill is published on
+  [ClawHub](https://clawhub.openclaw.com) (package: `odsh-interop`); install with
+  `openclaw skills install odsh-interop`.
 - **Cua** — this project's Windows desktop execution layer is powered by
   [Cua Driver](https://github.com/trycua/cua) (by the trycua team). Huge thanks for an open, cross-platform,
   focus-safe computer-use driver that lets agents drive desktop apps without stealing the user's cursor.

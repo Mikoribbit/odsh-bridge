@@ -1,8 +1,20 @@
 ---
 name: odsh-interop
-description: ODSH Bridge cross-container collaboration protocol — how the OpenClaw agent routes tasks between itself and a DeepSeek Harness (DSH) execution layer by task weight and predicted token cost: task envelopes, bridge zones, notification channel rules
-version: 4
+description: ODSH Bridge cross-container collaboration protocol — how the OpenClaw agent routes tasks between itself and a DeepSeek Harness (DSH) execution layer by task weight and predicted token cost: task envelopes, bridge zones, notification channel rules, optional read-only SQLite audit ledger
+version: 5
 author: odsh-bridge project
+author_email: 319212746+rm-Vstar@users.noreply.github.com
+maintainers:
+  - 319212746+rm-Vstar@users.noreply.github.com
+license: MIT
+tags:
+  - openclaw
+  - dsh
+  - bridge
+  - interop
+  - automation
+categories:
+  - integration
 when_to_use: for every incoming operator request, decide whether to handle it yourself or relay it to the DSH execution layer; then use the bridge envelopes when relaying. DSH runs a self-starting bridge daemon, so it is always ready to receive and execute relayed tasks.
 ---
 

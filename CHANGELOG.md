@@ -1,3 +1,17 @@
+## [1.3.5] - 2026-08-26
+
+Patch release - **ClawHub publishing readiness for odsh-interop skill**.
+
+### Added
+
+- **`skills/odsh-interop/SKILL.md` frontmatter v5**: added the ClawHub-required fields —
+  `author_email`, `maintainers`, `license: MIT`, `tags`, `categories` (kept `name/description/
+  `version/author/when_to_use`).
+- **`skills/odsh-interop/PUBLISH.md`**: dry-run / publish / re-verify steps, plus common
+  failure modes.
+- **README §5 Credits**: ClawHub link + install command for `odsh-interop`.
+
+---
 ## [1.3.4] - 2026-08-26
 
 Patch release - **OpenClaw skill v4: read-only SQLite ledger**.

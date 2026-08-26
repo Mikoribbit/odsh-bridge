@@ -163,4 +163,4 @@ If this project helps you, consider supporting its maintainer:
 
 ---
 
-> Maintained by: ODSH Bridge contributors · License: MIT · Node >= 18 · Zero-dependency ESM
+> Maintained by: ODSH Bridge contributors · License: MIT · Core Node >= 18 · SQLite audit store requires Node >=22.5 · Zero-dependency ESM

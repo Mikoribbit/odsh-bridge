@@ -155,4 +155,4 @@ node src/dshtrigger.mjs send --kind echo --text "hello"
 
 ---
 
-> 维护：ODSH Bridge contributors · 许可证：MIT · Node >= 18 · 零依赖 ESM
+> 维护：ODSH Bridge contributors · 许可证：MIT · 核心 Node >= 18 · SQLite 审计存储需 Node >=22.5 · 零依赖 ESM

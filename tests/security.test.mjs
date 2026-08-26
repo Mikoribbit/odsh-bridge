@@ -88,5 +88,30 @@ assert(existsSync(join(ROOT,'scripts','setup-dsh.sh')), 'setup-dsh.sh exists');
 assert(existsSync(join(ROOT,'scripts','setup-windows.ps1')), 'setup-windows.ps1 exists');
 try { execFileSync('bash', ['-n', join(ROOT,'scripts','setup-dsh.sh')]); ok('bash -n setup-dsh.sh'); } catch(e){ fail('bash -n', e.message); }
 
+
+// ---- 7) private username / hostname must NOT leak into the public repo ----
+// Real deployment details (a personal Windows username, hostname, or a drive-letter
+// home path from a live environment) must stay out of tracked files. Placeholder
+// examples like <your-windows-username> are fine.
+console.log('privacy leak scan:');
+const sensitiveNames = ['miko', '897322599', 'mikopc', 'vstarphoto', '0vstar'];
+const allowedPrivacy = ['AUTHORS.md','CHANGELOG.md','README.md','README.zh.md','docs/CUA-EXECUTION.md','tests/security.test.mjs'];
+for (const f of ALL_FILES) {
+  if (!existsSync(f)) continue;
+  const rel = f.replace(ROOT + '/', '');
+  if (allowedPrivacy.includes(rel)) continue;   // prose/docs may reference historical names by consent
+  try {
+    const txt = readFileSync(f, 'utf8');
+    const low = txt.toLowerCase();
+    for (const name of sensitiveNames) {
+      if (name === 'miko' && /mikoribbit/i.test(low)) continue; // project/author handle is fine
+      // match as a standalone token (word boundary), skip placeholder contexts
+      const re = new RegExp('(?<![A-Za-z0-9_])' + name + '(?![A-Za-z0-9_])', 'i');
+      if (re.test(low)) fail('personal identifier \'' + name + '\' in ' + rel);
+    }
+  } catch {}
+}
+ok('no tracked personal identifiers outside consented docs');
+
 console.log(failures === 0 ? '\nALL SECURITY TESTS PASSED' : '\n' + failures + ' FAILURE(S)');
 process.exit(failures === 0 ? 0 : 1);

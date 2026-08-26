@@ -7,6 +7,7 @@ import { readdirSync, readFileSync, writeFileSync, existsSync, renameSync, mkdir
 import { randomUUID } from 'node:crypto';
 import { join, basename, dirname, resolve, isAbsolute } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { initSqlite, recordEnvelope, recordError } from './sqlite-store.mjs';
 
 const BRIDGE = process.env.BRIDGE_PATH || '/root/ODSH-bridge';
 // SECURITY: read-file/write-file honor this flag. Default false => ONLY relative paths below BRIDGE;
@@ -253,6 +254,7 @@ function innerTick() {
       // truly bad data (unparsable): fail-closed into the DLQ instead of retrying forever
       log('unparsable input -> DLQ', f, e.message);
       dlqEnvelope(taskId, f, raw, { code: 'parse_error', message: e.message, stack: e.stack });
+      recordError(taskId, 'parse_error: ' + e.message, e.stack);
       state.processed[taskId] = 'dead'; saveState(state); continue;
     }
 
@@ -292,10 +294,12 @@ function innerTick() {
     state.processed[taskId] = result.status;
     saveState(state);
     if (result.status !== 'cancelled') notifyChannel(result.human);
+    recordEnvelope(task, result, trace);
   }
 }
 
 log('dsh_bridge daemon start', { intervalMs: INTERVAL_MS, notify: NOTIFY });
+await initSqlite(process.env.BRIDGE_SQLITE_DB); // optional auditing; no-op if node:sqlite absent
 tick();
 if (!ONCE) setInterval(tick, INTERVAL_MS);
 log('daemon ready' + (ONCE ? ' (once)' : ' (looping)'));

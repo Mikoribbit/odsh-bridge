@@ -1,3 +1,25 @@
+## [1.3.2] — 2026-08-26
+
+Minor release — **optional SQLite audit side-store**.
+
+### Added
+
+- **Optional SQLite auditing/stats store** (`src/sqlite-store.mjs` + `src/sqlite-impl.mjs`):
+  when Node's built-in `node:sqlite` is available (Node >=22.5) **and** `BRIDGE_SQLITE` is enabled,
+  the daemon mirrors each task into `<BRIDGE>/DSH-Workspace/dsh.db` — `dsh_envelopes`,
+  `dsh_events` (status log), `dsh_errors` (failed detail), and the `dsh_bridge_stats` view.
+  Integrates with trace IDs (`trace_id`/`span_id` per row).
+- **Fail-soft degradation**: if `node:sqlite` is absent or `BRIDGE_SQLITE=0`, the module no-ops and
+  the JSON file store remains the source of truth (keeps zero-dependency + wide Node compatibility).
+- **`new-bridge.sh` auto-detects** `node:sqlite` at setup and writes `BRIDGE_SQLITE=1/0` into `.env`.
+
+### Changed
+
+- `npm run check` now also syntax-checks `sqlite-store.mjs` and `sqlite-impl.mjs`.
+- `docs/BRIDGE-SPEC.md`: new §9 documents the optional SQLite layer, schema, enable/disable,
+  degradation and security posture.
+
+---
 ## [1.3.1] - 2026-08-26
 
 Patch release - **resilience & observability**. Adds a dead-letter queue for bad

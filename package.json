@@ -1,6 +1,6 @@
 {
   "name": "odsh-bridge",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "OpenClaw x DeepSeek Harness bridge: gateway WebSocket client (Ed25519 pairing) + file-based envelope daemon. Zero dependencies, pure ESM.",
   "type": "module",
   "private": false,
@@ -35,7 +35,7 @@
     ".env.example"
   ],
   "scripts": {
-    "check": "node --check src/env.mjs && node --check src/gateway-client.mjs && node --check src/oc-invoke.mjs && node --check src/oc-send.mjs && node --check src/oc-client.mjs && node --check src/oc-cua.mjs && node --check src/bridge-daemon.mjs && node --check src/dshtrigger.mjs && bash -n scripts/setup-dsh.sh && bash -n scripts/dsh-entrypoint.sh && bash -n scripts/new-bridge.sh && echo ALL_SYNTAX_OK",
+    "check": "node --check src/env.mjs && node --check src/gateway-client.mjs && node --check src/oc-invoke.mjs && node --check src/oc-send.mjs && node --check src/oc-client.mjs && node --check src/oc-cua.mjs && node --check src/bridge-daemon.mjs && node --check src/dshtrigger.mjs && node --check src/sqlite-store.mjs && node --check src/sqlite-impl.mjs && bash -n scripts/setup-dsh.sh && bash -n scripts/dsh-entrypoint.sh && bash -n scripts/new-bridge.sh && echo ALL_SYNTAX_OK",
     "prepublishOnly": "node -e \"const fs=require('fs');const bad=['.env'];const hit=bad.filter(f=>fs.existsSync(f));if(hit.length){console.error('blocked: '+hit.join(',')+' present');process.exit(1)}\"",
     "test": "node tests/security.test.mjs"
   }

@@ -143,4 +143,26 @@ renameSync(tmp, fin);                                // → <taskId>_result.json
 
 - Four-zone ownership: DSH never enters Openclaw-Workspace, OpenClaw never enters DSH-Workspace; the identity JWK belongs exclusively to DSH-Workspace.
 - `run-command` has execution capability: only open to envelope requesters that are trusted/whitelisted; the release build keeps the original validation as-is (first-word charset check), and production deployments should add a requester whitelist.
-- All files UTF-8 + LF; sensitive info never committed (`.env` / gitignore already exclude it).
+- All files UTF-8 + LF; sensitive data never committed (`.env` / gitignore already exclude it).
+
+---
+
+## 9. Optional SQLite audit side-store (v1.3.1)
+
+An additive, **non-required** auditing layer. The core bridge always stays on the JSON
+file store (`.state/dsh-processed.json` + `Output/*_result.json`) — nothing here
+replaces it. When the DSH runtime provides Node's built-in `node:sqlite` (Node >=22.5)
+**and** `BRIDGE_SQLITE` is enabled, the daemon additionally mirrors task rows into
+`<BRIDGE>/DSH-Workspace/dsh.db` for queryable history, aggregates and audit.
+
+- **Enable**: `new-bridge.sh` detects `node:sqlite` availability at setup and writes
+  `BRIDGE_SQLITE=1` (or 0) into `.env`. You can also set it manually;
+  `BRIDGE_SQLITE_DB` overrides the default db path.
+- **Degradation**: if `node:sqlite` is unavailable or `BRIDGE_SQLITE=0`, the module
+  no-ops and the daemon is completely unaffected (fail-soft, keeps zero-dependency).
+- **Schema**: `dsh_envelopes` (one row per task, incl. `trace_id`/`span_id`),
+  `dsh_events` (status-change log), `dsh_errors` (failed-task detail), and the
+  `dsh_bridge_stats` view for aggregate metrics (total / completed / failed / running /
+  first & last created).
+- **Security**: the db lives in `DSH-Workspace/` (private zone, like the JWK); it is not
+  git-tracked. Same fail-closed posture applies to envelope handling.

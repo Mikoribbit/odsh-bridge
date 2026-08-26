@@ -70,6 +70,12 @@ else
   ok "four zones created"
 fi
 
+# ---- optional SQLite auditing: enabled only if node:sqlite is available (Node >=22.5)
+SQLITE_FLAG=0
+if node --input-type=module -e "import('node:sqlite').then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
+  SQLITE_FLAG=1
+fi
+
 # ---- .env
 ENVFILE="$HOST_DIR/.env"
 cat > "$ENVFILE" <<EOF
@@ -83,6 +89,8 @@ OC_TOKEN=$TOKEN
 DISCORD_CHANNEL_ID=$CHANNEL
 OC_SEND_SCRIPT=
 CUA_SSH_USER=$CUA_USER
+# SQLite optional audit side-store (auto: 1 if node:sqlite available)
+BRIDGE_SQLITE=$SQLITE_FLAG
 EOF
 ok ".env written -> $ENVFILE"
 

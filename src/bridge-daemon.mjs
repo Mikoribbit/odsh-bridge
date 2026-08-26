@@ -202,7 +202,7 @@ function executePayload(task) {
       const cmd = String(command).trim();
       if (!cmd) return { error: 'no node command' };
       try {
-        const out = execFileSync('node', [NODE_SCRIPT, cmd, JSON.stringify(params)], {
+        const out = execFileSync(process.execPath, [NODE_SCRIPT, cmd, JSON.stringify(params)], {
           timeout: 60000, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024,
         });
         return { node: 'cua', command: cmd, reply: out.slice(0, 3000) };
@@ -226,7 +226,7 @@ function notifyChannel(text) {
     return false;
   }
   try {
-    const out = execFileSync('node', [SEND_SCRIPT, CHANNEL, text], { timeout: 25000, encoding: 'utf8' });
+    const out = execFileSync(process.execPath, [SEND_SCRIPT, CHANNEL, text], { timeout: 25000, encoding: 'utf8' });
     log('notify ok', out.slice(0, 200));
     return true;
   } catch (e) { log('notify failed', e.message.slice(0, 200)); return false; }

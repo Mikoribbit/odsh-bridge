@@ -18,8 +18,8 @@ h2(){ printf "\n  %s\n" "▸ $1"; }
 info(){ printf "  · %s\n" "$1"; }
 ok(){ printf "    ✓ %s\n" "$1"; }
 warn(){ printf "    ⚠ %s\n" "$1"; }
-ask(){ local _v; printf "    ◈ %s %s : " "$2" "$3"; IFS= read -r _v || true; if [ -z "$_v" ]; then _v="$3"; fi; eval "$1="$_v""; }
-askyn(){ local _a; while true; do printf "    ☑ %s" "$2"; if [ "$3" = "y" ]; then printf " (y/N)> "; else printf " (y/N)> "; fi; IFS= read -r _a; if [ -z "$_a" ]; then _a="$3"; fi; case "$_a" in [yY]) eval "$1=y"; return;; [nN]) eval "$1=n"; return;; esac; done; }
+ask(){ local _v; printf "\n    ◈ %s\n    ▼ %s = " "$2" "$3"; IFS= read -r _v || true; if [ -z "${_v// }" ]; then _v="$3"; fi; eval "$1=$_v"; }
+askyn(){ local _a; while true; do printf "\n    ☑ %s %s = " "$2" "(default ${3:-n})"; IFS= read -r _a || true; if [ -z "${_a// }" ]; then _a="$3"; fi; case "$_a" in [yY]) eval "$1=y"; return;; [nN]) eval "$1=n"; return;; esac; done; }
 
 # defaults
 HOST_DIR=""; BIND="/root/ODSH-bridge"; OC_NAME="openclaw"; DSH_NAME="deepseek-harness"

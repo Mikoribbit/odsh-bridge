@@ -36,6 +36,12 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+BRIDGE_SQLITE="0" # desired audit store state; normalized to 1/0 in .env
+# ---- detect node:sqlite availability once (Node >=22.5 supports it) ----
+SQLITE_SUPPORTED=0
+if node --input-type=module -e "import('node:sqlite').then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1; then SQLITE_SUPPORTED=1; fi
+BRIDGE_SQLITE=0
+
 # if interactive OR no dir given -> run wizard
 if [ "$INTERACTIVE" = 1 ] || [ -z "$HOST_DIR" ]; then
   sep; printf "\n  ODS Bridge  setup wizard\n"; sep
@@ -54,6 +60,11 @@ if [ "$INTERACTIVE" = 1 ] || [ -z "$HOST_DIR" ]; then
   ask CHANNEL "Discord channel id (blank=none)" ""
   askyn EMIT_COMPOSE "generate docker-compose.yaml?" y
   askyn CUA_YN "enable Cua Windows Desktop channel?" n
+  if [ "$SQLITE_SUPPORTED" = 1 ]; then
+    askyn BRIDGE_SQLITE "enable SQLite audit store (queryable stats)?" y
+  else
+    warn "node:sqlite not available (need Node >=22.5) — SQLite store skipped"
+  fi
   if [ "$CUA_YN" = y ]; then ask CUA_USER "Windows SSH username" "$(id -un 2>/dev/null || true)"; fi
   sep; ok "wizard complete."
 fi
@@ -70,10 +81,11 @@ else
   ok "four zones created"
 fi
 
-# ---- optional SQLite auditing: enabled only if node:sqlite is available (Node >=22.5)
-SQLITE_FLAG=0
-if node --input-type=module -e "import('node:sqlite').then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
-  SQLITE_FLAG=1
+# ---- SQLite side-store: non-interactive default = node:sqlite supported
+# (the wizard, if run, already set BRIDGE_SQLITE via a y/n prompt; for the
+#  one-liner form we default to enabled when node:sqlite is available)
+if [ "$INTERACTIVE" = 0 ]; then
+  [ "$SQLITE_SUPPORTED" = 1 ] && BRIDGE_SQLITE=1 || BRIDGE_SQLITE=0
 fi
 
 # ---- .env
@@ -89,8 +101,8 @@ OC_TOKEN=$TOKEN
 DISCORD_CHANNEL_ID=$CHANNEL
 OC_SEND_SCRIPT=
 CUA_SSH_USER=$CUA_USER
-# SQLite optional audit side-store (auto: 1 if node:sqlite available)
-BRIDGE_SQLITE=$SQLITE_FLAG
+# SQLite optional audit side-store (only meaningful on Node with node:sqlite)
+BRIDGE_SQLITE=$(case "$BRIDGE_SQLITE" in y|Y|yes|1) echo 1;; *) echo 0;; esac)
 EOF
 ok ".env written -> $ENVFILE"
 

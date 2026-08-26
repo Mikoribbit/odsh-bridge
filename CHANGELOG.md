@@ -1,3 +1,27 @@
+## [1.3.0] — 2026-08-26
+
+Minor release — **deployment & onboarding overhaul**. Everything now centers on
+an interactive setup wizard and a cleaner, split documentation.
+
+### Added
+
+- **Interactive setup wizard** (`scripts/new-bridge.sh`): run it with no args to walk
+  through a visual prompt — bridge dir, mount path, service names, gateway port,
+  `OC_TOKEN`, Discord channel, optional compose + Cua — each with a bracketed default
+  (press Enter to keep). Non-interactive `./scripts/new-bridge.sh <dir>` still works.
+- **README split** (EN + zh): main README is now a short index; deep-dive sections moved
+  to `docs/QUICKSTART`, `docs/CONFIGURATION`, `docs/INTEGRATIONS`, `docs/OPERATIONS`.
+- **Support section**: Buy Me a Coffee link (`buymeacoffee.com/mikoribbit`) in both READMEs.
+- **Privacy-leak CI scan**: `security.test.mjs` now fails on any tracked personal identifier
+  (username / hostname) outside explicitly consented docs — prevents regressions.
+
+### Changed
+
+- README/quickstart updated to the interactive `new-bridge.sh` flow and the self-starting
+  daemon (no manual `bridge-daemon.mjs` invocation needed on a normal boot).
+- `npm run check` now also `bash -n` the new `new-bridge.sh` and `dsh-entrypoint.sh`.
+
+---
 ## [1.2.0] — 2026-08-26
 
 Minor release — **self-starting bridge daemon** (Route A). The bridge is now always-on:

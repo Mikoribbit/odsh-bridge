@@ -31,7 +31,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     -i|--interactive) INTERACTIVE=1; shift;;
     --no-compose) EMIT_COMPOSE=n; shift;;
-    -h|--help) sed -n '1,18p' "$0"; exit 0;;
+    -h|--help) sed -n '1,16p' "$0"; echo; sed -n '17,28p' "$0"; exit 0;;
     *) HOST_DIR="$1"; shift;;
   esac
 done

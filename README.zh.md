@@ -95,6 +95,10 @@
 
 ## 3. 快速开始
 
+> ⚠️ **自启守护进程（v1.2+）**：DSH 容器启动时自动拉起桥守护进程
+>（`scripts/dsh-entrypoint.sh` → `src/dshtrigger.mjs daemon`）。OpenClaw 随时把
+> `T-*.json` 信封投进 `Input/` 即被执行——无需任何手动步骤，且守护进程自愈（崩溃自动重启）。
+
 ### 3.0 获取项目
 
 ```bash

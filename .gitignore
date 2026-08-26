@@ -18,3 +18,4 @@ Openclaw-Workspace/
 .idea/
 .vscode/
 .artifacts/
+pnpm-lock.yaml

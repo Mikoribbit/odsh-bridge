@@ -1,6 +1,6 @@
 {
   "name": "odsh-bridge",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "OpenClaw x DeepSeek Harness bridge: gateway WebSocket client (Ed25519 pairing) + file-based envelope daemon. Zero dependencies, pure ESM.",
   "type": "module",
   "private": false,

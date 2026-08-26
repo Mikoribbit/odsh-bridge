@@ -1,3 +1,36 @@
+## [1.2.0] — 2026-08-26
+
+Minor release — **self-starting bridge daemon** (Route A). The bridge is now always-on:
+the DSH container boots the daemon automatically, so tasks relayed from OpenClaw execute
+with zero manual setup.
+
+### Added
+
+- **Self-start daemon**: `scripts/dsh-entrypoint.sh` + `src/dshtrigger.mjs` — on container
+  boot the daemon supervisor is launched in the background (self-healing: auto-restarts a
+  crashed child), then DSH web becomes PID1. Users never start a daemon manually.
+- **`src/dshtrigger.mjs`** — unified `daemon | send | status | once` entry: `daemon`
+  (supervisor, self-heal + graceful SIGTERM), `send` (drop an envelope & wait for result),
+  `status` (bridge snapshot), `once` (single scan). Auto-locates the daemon script
+  (`bridge-daemon.mjs` beside it, `dsh_bridge.mjs`, or `ODSH_DAEMON`).
+- **Compose wiring (both modes)**:
+  - centralized `docker-compose.yml`: DSH service gets
+    `entrypoint: /bin/sh scripts/dsh-entrypoint.sh` (falls back to a bridge-mounted
+    `dshtrigger.mjs` for separated deployments).
+  - separated: entrypoint script placed on the bridge mount
+    (`<bridge>/DSH-Workspace/tools/dshtrigger.mjs`) + entrypoint override; no image rebuild.
+- **Tunables via compose env**: `ODSH_INTERVAL_MS` (scan interval, default 2000),
+  `ODSH_DAEMON`, `ODSH_DAEMON_LOG`; optional `ODSH_NOTIFY=1` for completion notifications.
+- **Skill v3** (`skills/odsh-interop/SKILL.md`): documents that DSH is always-ready
+  (self-starting daemon) — OpenClaw can drop a `T-*.json` envelope any time.
+
+### Changed
+
+- `dshtrigger.mjs` added to `src/` (release layout); the runtime copy in
+  `DSH-Workspace/tools/` remains for separated deployments.
+
+---
+
 # Changelog
 
 All notable changes to this project will be documented in this file.

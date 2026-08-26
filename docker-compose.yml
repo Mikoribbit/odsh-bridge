@@ -51,6 +51,10 @@ services:
       - "${ODSH_BRIDGE_HOST_DIR:-./bridge}:/root/ODSH-bridge"
       - ./src:/opt/odsh-bridge/src:ro
       - ./.env:/opt/odsh-bridge/.env:ro
+    # Route A (self-start): boot the bridge daemon supervisor before DSH web.
+    # The entrypoint lives in this repo (scripts/dsh-entrypoint.sh) and also falls
+    # back to <bridge>/DSH-Workspace/tools/dshtrigger.mjs for separated deployments.
+    entrypoint: [ "/bin/sh", "/opt/odsh-bridge/scripts/dsh-entrypoint.sh" ]
     restart: unless-stopped
     # (optional) auto-run the bridge daemon inside DSH:
     # command: /bin/sh -c "cd /opt/odsh-bridge && node src/bridge-daemon.mjs --notify --interval-ms 5000 & exec /entrypoint.sh"

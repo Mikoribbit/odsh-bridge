@@ -1,9 +1,9 @@
 ---
 name: odsh-interop
 description: ODSH Bridge cross-container collaboration protocol — how the OpenClaw agent routes tasks between itself and a DeepSeek Harness (DSH) execution layer by task weight and predicted token cost: task envelopes, bridge zones, notification channel rules
-version: 2
+version: 3
 author: odsh-bridge project
-when_to_use: for every incoming operator request, decide whether to handle it yourself or relay it to the DSH execution layer; then use the bridge envelopes when relaying
+when_to_use: for every incoming operator request, decide whether to handle it yourself or relay it to the DSH execution layer; then use the bridge envelopes when relaying. DSH runs a self-starting bridge daemon, so it is always ready to receive and execute relayed tasks.
 ---
 
 # ODSH-Interop Skill (OpenClaw side)
@@ -148,9 +148,17 @@ Place this skill in your skills directory (e.g. `/root/.openclaw/skills/odsh-int
 or your skills path), then the collaboration works as long as:
 
 - both containers share the bridge mount (same `<BRIDGE>` path);
-- DSH side has `dsh_bridge` daemon running (or you trigger it manually);
+- DSH has the bridge daemon **auto-started** (see below) — no manual start needed;
 - the notification channel id is configured on both sides (envelope `context.channel` /
   DSH `.env` `DISCORD_CHANNEL_ID`).
+
+## DSH is always ready (self-starting daemon)
+
+Since v1.2, the DSH container auto-starts the bridge daemon at boot
+(`scripts/dsh-entrypoint.sh` → `src/dshtrigger.mjs daemon`). You can assume DSH is
+continuously watching `Input/` and will pick up any `T-*.json` envelope you drop —
+no operator needs to start anything. If a result does not arrive, check that the DSH
+container is running and the bridge mount is shared; a restart re-arms the daemon automatically.
 
 ## Notes
 

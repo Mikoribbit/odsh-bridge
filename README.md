@@ -96,6 +96,11 @@ There are three data flows:
 
 ## 3. Quick start
 
+> ⚠️ **Self-starting daemon (v1.2+)**: the DSH container auto-starts the bridge daemon
+> at boot (`scripts/dsh-entrypoint.sh` → `src/dshtrigger.mjs daemon`). OpenClaw can drop
+> a `T-*.json` envelope into `Input/` at any time and DSH will execute it — no manual step,
+> and the daemon self-heals (a crashed child restarts automatically).
+
 ### 3.0 Get the project
 
 ```bash

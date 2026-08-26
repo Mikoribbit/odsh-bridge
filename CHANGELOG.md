@@ -1,3 +1,23 @@
+## [1.3.3] - 2026-08-26
+
+Patch release - **SQLite store robustness**.
+
+### Fixed
+
+- **`src/sqlite-store.mjs`**: `recordEnvelope` now normalizes the three trace columns
+  (`trace_id`/`span_id`/`parent_span_id`) with `?? null`, so a trace object that
+  *omits* a key no longer binds `undefined` (which made node:sqlite `run()` throw and
+  silently drop the whole envelope from audit). Missing keys are recorded as `NULL`.
+
+### Added
+
+- **daemon resilience**: `src/bridge-daemon.mjs` logs stray `unhandledRejection` /
+  `uncaughtException` instead of crashing the long-lived daemon.
+- **SQLite smoke test** in `tests/security.test.mjs`: opens a temp store on Node >=22.5,
+  inserts envelopes and asserts rows + the trace-missing-parent regression guard.
+
+---
+
 ## [1.3.2] — 2026-08-26
 
 Minor release — **optional SQLite audit side-store**.

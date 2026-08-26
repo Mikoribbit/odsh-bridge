@@ -45,9 +45,12 @@ export function recordEnvelope(task, result, trace) {
       expiresMs: task.expiresMs != null ? Number(task.expiresMs) : null,
       finishedMs: result && result.finishedMs != null ? Number(result.finishedMs) : null,
       raw_envelope: JSON.stringify(task),
-      trace_id: trace && trace.trace_id,
-      span_id: trace && trace.span_id,
-      parent_span_id: trace && trace.parent_span_id,
+      // trace fields may be undefined when keys are absent; normalize to null so
+      // node:sqlite run() never hits 'cannot be bound to SQLite parameter' and
+      // silently drops the whole envelope from audit.
+      trace_id: trace && (trace.trace_id ?? null),
+      span_id: trace && (trace.span_id ?? null),
+      parent_span_id: trace && (trace.parent_span_id ?? null),
     });
     if (result && result.status === 'failed' && result.error) {
       store.insertError({ taskId: task.taskId ?? task.id, error: String(result.error.message || result.error), traceback: '' });

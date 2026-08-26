@@ -113,5 +113,50 @@ for (const f of ALL_FILES) {
 }
 ok('no tracked personal identifiers outside consented docs');
 
+// ---- 8) SQLite store smoke test (Node >=22.5 only; older runtimes: skip) ----
+console.log('sqlite optional store:');
+(async () => {
+  const major = Number(process.versions.node.split('.')[0]);
+  if (major < 22 || (major === 22 && Number(process.versions.node.split('.')[1] ?? 0) < 5)) {
+    ok('skipped (node:sqlite requires Node >=22.5; running on ' + process.versions.node + ')');
+    if (failures > 0) { console.log(failures + ' FAILURE(S)'); process.exit(1); }
+    console.log('\nALL SECURITY TESTS PASSED'); process.exit(0);
+  }
+  try {
+    const { initSqlite, sqliteActive, recordEnvelope, closeSqlite } = await import(join(ROOT,'src','sqlite-store.mjs'));
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join: j } = await import('node:path');
+    const dir = mkdtempSync(j(tmpdir(), 'odsh-sqltest-'));
+    const db = j(dir, 'dsh.db');
+    process.env.BRIDGE_SQLITE = '1';
+    process.env.BRIDGE_SQLITE_DB = db;
+    const st = await initSqlite(db);
+    assert(st !== null, 'initSqlite opens a store on Node >=22.5');
+    assert(sqliteActive(), 'sqliteActive() true after init');
+    recordEnvelope(
+      { taskId: 'sq-smoke', type: 'task', status: 'queued', requester: 'dsh', target: 'dsh', createdMs: Date.now() },
+      { status: 'done', finishedMs: Date.now() },
+      { trace_id: 'abc-123', span_id: 's1', parent_span_id: null }
+    );
+    // regression guard: a trace object missing the parent_span_id key must be
+    // normalized to null (not undefined) or node:sqlite drops the whole row.
+    recordEnvelope(
+      { taskId: 'sq-trace-missing-parent', type: 'task', status: 'queued', requester: 'dsh', target: 'dsh', createdMs: Date.now() },
+      { status: 'done', finishedMs: Date.now() },
+      { trace_id: 'abc-124', span_id: 's1' }
+    );
+    const { DatabaseSync } = await import('node:sqlite');
+    const dbc = new DatabaseSync(db);
+    const row = dbc.prepare('SELECT COUNT(*) AS c, MAX(status) AS last_status FROM dsh_envelopes').get();
+    const miss = dbc.prepare('SELECT COUNT(*) AS c FROM dsh_envelopes WHERE taskId=? AND parent_span_id IS NULL').get('sq-trace-missing-parent');
+    closeSqlite();
+    assert(row.c >= 2, 'envelope rows inserted into dsh.db', 'c=' + row.c);
+    assert(miss.c === 1, 'missing parent_span_id key normalized to null (row kept)');
+  } catch (e) {
+    fail('sqlite smoke test', e.message);
+  }
+})();
+
 console.log(failures === 0 ? '\nALL SECURITY TESTS PASSED' : '\n' + failures + ' FAILURE(S)');
 process.exit(failures === 0 ? 0 : 1);

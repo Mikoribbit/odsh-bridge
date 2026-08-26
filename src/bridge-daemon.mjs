@@ -298,6 +298,10 @@ function innerTick() {
   }
 }
 
+// keep the long-lived daemon alive: log stray async/exception errors instead of crashing
+process.on('unhandledRejection', (r) => { try { log('unhandledRejection', (r && (r.stack || r.message || r)) || r); } catch {} });
+process.on('uncaughtException', (e) => { try { log('uncaughtException', (e && (e.stack || e.message)) || e); } catch {} });
+
 log('dsh_bridge daemon start', { intervalMs: INTERVAL_MS, notify: NOTIFY });
 await initSqlite(process.env.BRIDGE_SQLITE_DB); // optional auditing; no-op if node:sqlite absent
 tick();

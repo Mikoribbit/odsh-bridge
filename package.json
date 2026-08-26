@@ -1,6 +1,6 @@
 {
   "name": "odsh-bridge",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "OpenClaw x DeepSeek Harness bridge: gateway WebSocket client (Ed25519 pairing) + file-based envelope daemon. Zero dependencies, pure ESM. Optional SQLite audit store requires Node >=22.5 (node:sqlite); core bridge runs on >=18.",
   "type": "module",
   "private": false,

@@ -1,9 +1,9 @@
-# ODSH Bridge — OpenClaw × DeepSeek Harness connectivity bridge
+# ODSH-Bridge for Docker — OpenClaw × DeepSeek Harness connectivity bridge (Docker edition)
 
 <div align="center">
 
-[**English**](https://github.com/Mikoribbit/odsh-bridge/blob/main/README.md) ·
-[**中文**](https://github.com/Mikoribbit/odsh-bridge/blob/main/README.zh.md)
+[**English**](https://github.com/Mikoribbit/ODSH-Bridge/blob/main/README.md) ·
+[**中文**](https://github.com/Mikoribbit/ODSH-Bridge/blob/main/README.zh.md)
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Node](https://img.shields.io/badge/Node-%3E%3D18-green.svg)
@@ -102,7 +102,7 @@ Requires: **Docker** + two images — OpenClaw (official `openclaw/openclaw:late
 
 ```bash
 # 1. Clone, then scaffold the bridge with the interactive wizard
-git clone https://github.com/Mikoribbit/odsh-bridge.git && cd odsh-bridge
+git clone https://github.com/Mikoribbit/ODSH-Bridge.git && cd ODSH-Bridge
 chmod +x scripts/new-bridge.sh
 ./scripts/new-bridge.sh            # visual prompts; press Enter to keep defaults
 

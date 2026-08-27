@@ -1,9 +1,9 @@
-# ODSH Bridge — OpenClaw × DeepSeek Harness 互联桥
+# ODSH-Bridge for Docker — OpenClaw × DeepSeek Harness 互联桥（Docker 版）
 
 <div align="center">
 
-[**English**](https://github.com/Mikoribbit/odsh-bridge/blob/main/README.md) ·
-[**中文**](https://github.com/Mikoribbit/odsh-bridge/blob/main/README.zh.md)
+[**English**](https://github.com/Mikoribbit/ODSH-Bridge/blob/main/README.md) ·
+[**中文**](https://github.com/Mikoribbit/ODSH-Bridge/blob/main/README.zh.md)
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Node](https://img.shields.io/badge/Node-%3E%3D18-green.svg)
@@ -102,7 +102,7 @@
 
 ```bash
 # 1. 克隆，然后用交互式向导生成桥目录
-git clone https://github.com/Mikoribbit/odsh-bridge.git && cd odsh-bridge
+git clone https://github.com/Mikoribbit/ODSH-Bridge.git && cd ODSH-Bridge
 chmod +x scripts/new-bridge.sh
 ./scripts/new-bridge.sh            # 可视化提示；回车保留默认
 
